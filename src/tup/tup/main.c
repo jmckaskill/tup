@@ -1,3 +1,4 @@
+/* vim: set ts=8 sw=8 sts=8 noet tw=78: */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -534,9 +535,12 @@ static int touch(int argc, char **argv)
 		struct path_element *pel = NULL;
 		tupid_t dt;
 
-		if(lstat(argv[x], &buf) < 0) {
-			close(open(argv[x], O_WRONLY | O_CREAT, 0666));
-			if(lstat(argv[x], &buf) < 0) {
+		if(fd_lstat(argv[x], &buf)) {
+			fd_t fd = FD_INITIALIZER;
+			fd_create(argv[x], O_WRONLY, 0666, &fd);
+			fd_close(fd);
+
+			if(fd_lstat(argv[x], &buf)) {
 				fprintf(stderr, "lstat: ");
 				perror(argv[x]);
 				return -1;
@@ -555,15 +559,14 @@ static int touch(int argc, char **argv)
 			if(tup_file_mod_mtime(dt, pel->path, buf.st_mtime, 1) < 0)
 				return -1;
 		} else if(S_ISLNK(buf.st_mode)) {
-			int fd;
-			fd = open(".", O_RDONLY);
-			if(fd < 0) {
+			fd_t fd;
+			if(fd_open(".", O_RDONLY, &fd)) {
 				perror(".");
 				return -1;
 			}
 			if(update_symlink_fileat(dt, fd, pel->path, buf.st_mtime, 1) < 0)
 				return -1;
-			close(fd);
+			fd_close(fd);
 		}
 		free(pel);
 	}

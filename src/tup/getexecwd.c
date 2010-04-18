@@ -1,11 +1,13 @@
+/* vim: set ts=8 sw=8 sts=8 noet tw=78: */
 #include "getexecwd.h"
 #include "compat.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <fcntl.h>
+#include <sys/types.h>
 #include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 static char mycwd[PATH_MAX];
 static int check_path(const char *path, const char *file);

@@ -1,6 +1,7 @@
 #ifndef entry_h
 #define entry_h
 
+#include "fd.h"
 #include "tupid_tree.h"
 #include "string_tree.h"
 #include "linux/list.h"
@@ -38,8 +39,8 @@ int tup_entry_resolve_dirsym(void);
 int tup_entry_resolve_sym(struct tup_entry *tent);
 int tup_entry_change_name(tupid_t tupid, const char *new_name);
 int tup_entry_change_name_dt(tupid_t tupid, const char *new_name, tupid_t dt);
-int tup_entry_open_tupid(tupid_t tupid);
-int tup_entry_open(struct tup_entry *tent);
+int tup_entry_open_tupid(tupid_t tupid, fd_t* pfd);
+int tup_entry_open(struct tup_entry *tent, fd_t* pfd);
 int tup_entry_rm(tupid_t tupid);
 struct tup_entry *tup_entry_get(tupid_t tupid);
 struct tup_entry *tup_entry_find(tupid_t tupid);

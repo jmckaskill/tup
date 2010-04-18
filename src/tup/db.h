@@ -2,6 +2,7 @@
 #define tup_db_h
 
 #include "tupid.h"
+#include "fd.h"
 #include "linux/list.h"
 #include "linux/rbtree.h"
 #include <stdio.h>
@@ -70,7 +71,7 @@ int tup_db_select_node_dir_glob(int (*callback)(void *, struct tup_entry *),
 int tup_db_delete_node(tupid_t tupid);
 int tup_db_delete_dir(tupid_t dt);
 int tup_db_modify_dir(tupid_t dt);
-int tup_db_open_tupid(tupid_t dt);
+int tup_db_open_tupid(tupid_t dt, fd_t* pfd);
 int tup_db_is_root_node(tupid_t tupid);
 int tup_db_change_node(tupid_t tupid, const char *name, tupid_t new_dt);
 int tup_db_set_name(tupid_t tupid, const char *new_name);
@@ -125,7 +126,7 @@ int tup_db_set_var(tupid_t tupid, const char *value);
 struct tup_entry *tup_db_get_var(const char *var, int varlen, char **dest);
 int tup_db_get_var_id_alloc(tupid_t tupid, char **dest);
 int tup_db_get_varlen(const char *var, int varlen);
-tupid_t tup_db_write_var(const char *var, int varlen, int fd);
+tupid_t tup_db_write_var(const char *var, int varlen, fd_t fd);
 int tup_db_var_foreach(int (*callback)(void *, const char *var, const char *value, int type), void *arg);
 int tup_db_read_vars(tupid_t dt, const char *file);
 

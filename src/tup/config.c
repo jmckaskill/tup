@@ -14,7 +14,7 @@ static int tup_wd_offset;
 static int tup_top_len;
 static int tup_sub_len;
 static tupid_t tup_sub_dir_dt = -1;
-static int top_fd = -1;
+static fd_t top_fd = FD_INITIALIZER;
 
 int find_tup_dir(void)
 {
@@ -52,8 +52,7 @@ int find_tup_dir(void)
 			return -1;
 		}
 	}
-	top_fd = open(".", O_RDONLY);
-	if(top_fd < 0) {
+	if(fd_open(".", O_RDONLY, &top_fd)) {
 		perror(".");
 		exit(1);
 	}
@@ -93,7 +92,7 @@ int get_sub_dir_len(void)
 	return tup_sub_len;
 }
 
-int tup_top_fd(void)
+fd_t tup_top_fd(void)
 {
 	return top_fd;
 }

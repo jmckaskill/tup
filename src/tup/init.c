@@ -24,5 +24,5 @@ void tup_cleanup(void)
 {
 	tup_db_close();
 	tup_lock_exit();
-	close(tup_top_fd());
+	fd_close(tup_top_fd());
 }

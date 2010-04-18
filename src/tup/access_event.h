@@ -20,7 +20,7 @@ enum access_type {
 	ACCESS_VAR,
 	ACCESS_SYMLINK,
 	ACCESS_GHOST,
-	ACCESS_STOP_SERVER,
+	ACCESS_STOP_SERVER
 };
 
 /** Structure sent across the unix socket to notify the main wrapper of any

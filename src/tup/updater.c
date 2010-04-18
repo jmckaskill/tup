@@ -1,4 +1,4 @@
-#define _ATFILE_SOURCE
+/* vim: set ts=8 sw=8 sts=8 noet tw=78: */
 #include "updater.h"
 #include "graph.h"
 #include "fileio.h"
@@ -9,7 +9,6 @@
 #include "server.h"
 #include "file.h"
 #include "lock.h"
-#include "fslurp.h"
 #include "array_size.h"
 #include "config.h"
 #include "monitor.h"
@@ -20,10 +19,8 @@
 #include <string.h>
 #include <errno.h>
 #include <ctype.h>
-#include <fcntl.h>
 #include <pthread.h>
 #include <sys/wait.h>
-#include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 
@@ -50,7 +47,7 @@ static void show_progress(int sum, int tot, struct node *n);
 
 static int do_keep_going;
 static int num_jobs;
-static int vardict_fd;
+static fd_t vardict_fd;
 static int warnings;
 
 static int sig_quit = 0;
@@ -82,8 +79,8 @@ static const char *signal_err[] = {
 
 struct worker_thread {
 	pthread_t pid;
-	int sock;        /* 1 sock and no shoes? What a life... */
-	int lockfd;      /* lock fd for .tup/jobXXXX/.tuplock */
+	fd_t sock;       /* 1 sock and no shoes? What a life... */
+	fd_t lockfd;     /* lock fd for .tup/jobXXXX/.tuplock */
 	struct graph *g; /* This should only be used in create_work() and todo_work */
 };
 
@@ -327,16 +324,15 @@ static int process_update_nodes(void)
 	sigaction(SIGINT, &sigact, NULL);
 	sigaction(SIGTERM, &sigact, NULL);
 	tup_db_begin();
-	vardict_fd = openat(tup_top_fd(), TUP_VARDICT_FILE, O_RDONLY);
-	if(vardict_fd < 0) {
+
+	if (fd_openat(tup_top_fd(), TUP_VARDICT_FILE, O_RDONLY, &vardict_fd)) {
 		/* Create vardict if it doesn't exist, since I forgot to add
 		 * that to the database update part whenever I added this file.
 		 * Not sure if this is the best approach, but it at least
 		 * prevents a useless error message from coming up.
 		 */
 		if(errno == ENOENT) {
-			vardict_fd = openat(tup_top_fd(), TUP_VARDICT_FILE, O_CREAT|O_RDONLY, 0666);
-			if(vardict_fd < 0) {
+			if(fd_createat(tup_top_fd(), TUP_VARDICT_FILE, O_RDONLY, 0666, &vardict_fd)) {
 				perror(TUP_VARDICT_FILE);
 				return -1;
 			}
@@ -354,7 +350,7 @@ static int process_update_nodes(void)
 		fprintf(stderr, "tup error: execute_graph returned %i - abort. This is probably a bug.\n", rc);
 		return -1;
 	}
-	close(vardict_fd);
+	fd_close(vardict_fd);
 	tup_db_commit();
 	if(rc < 0)
 		return -1;
@@ -512,19 +508,18 @@ static int execute_graph(struct graph *g, int keep_going, int jobs,
 	struct node *root;
 	struct worker_thread *workers;
 	int num_processed = 0;
-	int socks[2];
+	fd_t socks[2];
 	int rc = -1;
 	int x;
 	int active = 0;
-	int tupfd;
+	fd_t tupfd;
 
-	if(socketpair(AF_UNIX, SOCK_DGRAM, 0, socks) < 0) {
+	if(fd_socketpair(socks, SOCK_DGRAM) < 0) {
 		perror("socketpair");
 		return -2;
 	}
 
-	tupfd = openat(tup_top_fd(), TUP_DIR, O_RDONLY);
-	if(tupfd < 0) {
+	if(fd_openat(tup_top_fd(), TUP_DIR, O_RDONLY, &tupfd)) {
 		perror(TUP_DIR);
 		return -2;
 	}
@@ -540,15 +535,14 @@ static int execute_graph(struct graph *g, int keep_going, int jobs,
 		workers[x].sock = socks[1];
 		snprintf(lockname+3, 5, "%04x", x);
 		lockname[7] = 0;
-		if(mkdirat(tupfd, lockname, 0777) < 0) {
+		if(fd_mkdirat(tupfd, lockname, 0777) < 0) {
 			if(errno != EEXIST) {
 				perror("mkdirat");
 				return -2;
 			}
 		}
 		lockname[7] = '/';
-		workers[x].lockfd = openat(tupfd, lockname, O_RDWR|O_CREAT, 0644);
-		if(workers[x].lockfd < 0) {
+		if(fd_createat(tupfd, lockname, O_RDWR, 0644, &workers[x].lockfd)) {
 			perror(lockname);
 			return -2;
 		}
@@ -557,7 +551,7 @@ static int execute_graph(struct graph *g, int keep_going, int jobs,
 			return -2;
 		}
 	}
-	close(tupfd);
+	fd_close(tupfd);
 
 	root = list_entry(g->node_list.next, struct node, list);
 	DEBUGP("root node: %lli\n", root->tnode.tupid);
@@ -591,7 +585,7 @@ static int execute_graph(struct graph *g, int keep_going, int jobs,
 		}
 		list_del(&n->list);
 		active++;
-		if(send(socks[0], &n, sizeof(n), 0) != sizeof(n)) {
+		if(fd_send(socks[0], &n, sizeof(n), 0) != sizeof(n)) {
 			perror("send");
 			return -2;
 		}
@@ -609,7 +603,7 @@ check_empties:
 
 			/* recv() might get EINTR if we ctrl-c or kill tup */
 			do {
-				ret = recv(socks[0], &wrc, sizeof(wrc), 0);
+				ret = fd_recv(socks[0], &wrc, sizeof(wrc), 0);
 				if(ret == sizeof(wrc))
 					break;
 				if(ret < 0 && errno != EINTR) {
@@ -657,15 +651,15 @@ keep_going:
 out:
 	for(x=0; x<jobs; x++) {
 		struct node *n = NULL;
-		send(socks[0], &n, sizeof(n), 0);
+		fd_send(socks[0], &n, sizeof(n), 0);
 	}
 	for(x=0; x<jobs; x++) {
 		pthread_join(workers[x].pid, NULL);
-		close(workers[x].lockfd);
+		fd_close(workers[x].lockfd);
 	}
 	free(workers); /* Viva la revolucion! */
-	close(socks[0]);
-	close(socks[1]);
+	fd_close(socks[0]);
+	fd_close(socks[1]);
 	return rc;
 }
 
@@ -675,7 +669,7 @@ static void *create_work(void *arg)
 	struct graph *g = wt->g;
 	struct node *n;
 
-	while(recv(wt->sock, &n, sizeof(n), 0) == sizeof(n)) {
+	while(fd_recv(wt->sock, &n, sizeof(n), 0) == sizeof(n)) {
 		struct work_rc wrc;
 		int rc = 0;
 
@@ -703,7 +697,7 @@ static void *create_work(void *arg)
 
 		wrc.rc = rc;
 		wrc.n = n;
-		if(send(wt->sock, &wrc, sizeof(wrc), 0) != sizeof(wrc)) {
+		if(fd_send(wt->sock, &wrc, sizeof(wrc), 0) != sizeof(wrc)) {
 			perror("write");
 			return NULL;
 		}
@@ -724,7 +718,7 @@ static void *update_work(void *arg)
 	}
 	s->lockfd = wt->lockfd;
 
-	while(recv(wt->sock, &n, sizeof(n), 0) == sizeof(n)) {
+	while(fd_recv(wt->sock, &n, sizeof(n), 0) == sizeof(n)) {
 		struct edge *e;
 		int rc = 0;
 		struct work_rc wrc;
@@ -777,7 +771,7 @@ static void *update_work(void *arg)
 
 		wrc.rc = rc;
 		wrc.n = n;
-		if(send(wt->sock, &wrc, sizeof(wrc), 0) != sizeof(wrc)) {
+		if(fd_send(wt->sock, &wrc, sizeof(wrc), 0) != sizeof(wrc)) {
 			perror("write");
 			break;
 		}
@@ -792,7 +786,7 @@ static void *todo_work(void *arg)
 	struct graph *g = wt->g;
 	struct node *n;
 
-	while(recv(wt->sock, &n, sizeof(n), 0) == sizeof(n)) {
+	while(fd_recv(wt->sock, &n, sizeof(n), 0) == sizeof(n)) {
 		struct work_rc wrc;
 
 		if(n == NULL)
@@ -803,7 +797,7 @@ static void *todo_work(void *arg)
 
 		wrc.rc = 0;
 		wrc.n = n;
-		if(send(wt->sock, &wrc, sizeof(wrc), 0) != sizeof(wrc)) {
+		if(fd_send(wt->sock, &wrc, sizeof(wrc), 0) != sizeof(wrc)) {
 			perror("write");
 			return NULL;
 		}
@@ -811,13 +805,13 @@ static void *todo_work(void *arg)
 	return NULL;
 }
 
-static int unlink_outputs(int dfd, struct node *n)
+static int unlink_outputs(fd_t dfd, struct node *n)
 {
 	struct edge *e;
 	struct node *output;
 	for(e = n->edges; e; e = e->next) {
 		output = e->dest;
-		if(unlinkat(dfd, output->tent->name.s, 0) < 0) {
+		if(fd_unlinkat(dfd, output->tent->name.s) < 0) {
 			if(errno != ENOENT) {
 				perror("unlinkat");
 				fprintf(stderr, "tup error: Unable to unlink previous output file: %s\n", output->tent->name.s);
@@ -832,7 +826,7 @@ static int update(struct node *n, struct server *s)
 {
 	int status;
 	int pid;
-	int dfd = -1;
+	fd_t dfd;
 	int exit_status = -1;
 	const char *name = n->tent->name.s;
 	int rc;
@@ -864,8 +858,7 @@ static int update(struct node *n, struct server *s)
 		while(isspace(*name)) name++;
 	}
 
-	dfd = tup_entry_open(n->tent->parent);
-	if(dfd < 0) {
+	if(tup_entry_open(n->tent->parent, &dfd)) {
 		fprintf(stderr, "Error: Unable to open directory for update work.\n");
 		tup_db_print(stderr, n->tent->parent->tnode.tupid);
 		goto err_out;
@@ -893,7 +886,7 @@ static int update(struct node *n, struct server *s)
 		sigemptyset(&sa.sa_mask);
 		sigaction(SIGINT, &sa, NULL);
 		sigaction(SIGTERM, &sa, NULL);
-		if(fchdir(dfd) < 0) {
+		if(fd_chdir(dfd) < 0) {
 			perror("fchdir");
 			exit(1);
 		}
@@ -934,7 +927,7 @@ static int update(struct node *n, struct server *s)
 		goto err_cmd_failed;
 	}
 
-	close(dfd);
+	fd_close(dfd);
 	return rc;
 
 err_cmd_failed:
@@ -943,16 +936,16 @@ err_cmd_failed:
 	else
 		fprintf(stderr, " *** Command %lli failed with return value %i: %s\n", n->tnode.tupid, exit_status, name);
 err_close_dfd:
-	close(dfd);
+	fd_close(dfd);
 err_out:
 	return -1;
 }
 
 static int var_replace(struct node *n)
 {
-	int dfd;
-	int ifd;
-	int ofd;
+	fd_t dfd;
+	fd_t ifd;
+	fd_t ofd;
 	struct buf b;
 	char *input;
 	char *rbracket;
@@ -969,10 +962,9 @@ static int var_replace(struct node *n)
 	while(isspace(*input))
 		input++;
 
-	dfd = tup_entry_open(n->tent->parent);
-	if(dfd < 0)
+	if(tup_entry_open(n->tent->parent, &dfd))
 		return -1;
-	if(fchdir(dfd) < 0) {
+	if(fd_chdir(dfd) < 0) {
 		perror("fchdir");
 		return -1;
 	}
@@ -1003,17 +995,15 @@ static int var_replace(struct node *n)
 	if(tup_db_create_link(tent->tnode.tupid, n->tnode.tupid, TUP_LINK_NORMAL) < 0)
 		return -1;
 
-	ifd = open(input, O_RDONLY);
-	if(ifd < 0) {
+	if(fd_open(input, O_RDONLY, &ifd)) {
 		perror(input);
 		goto err_close_dfd;
 	}
-	if(fslurp(ifd, &b) < 0) {
+	if(fd_slurp(ifd, &b) < 0) {
 		goto err_close_ifd;
 	}
 	output = rbracket+2;
-	ofd = creat(output, 0666);
-	if(ofd < 0) {
+	if(fd_create(output, O_WRONLY|O_TRUNC, 0666, &ofd)) {
 		perror(output);
 		goto err_free_buf;
 	}
@@ -1027,7 +1017,7 @@ static int var_replace(struct node *n)
 		while(at < e && *at != '@') {
 			at++;
 		}
-		if(write(ofd, p, at-p) != at-p) {
+		if(fd_write(ofd, p, at-p) != at-p) {
 			perror("write");
 			goto err_close_ofd;
 		}
@@ -1048,7 +1038,7 @@ static int var_replace(struct node *n)
 				return -1;
 			p = rat + 1;
 		} else {
-			if(write(ofd, p, rat-p) != rat-p) {
+			if(fd_write(ofd, p, rat-p) != rat-p) {
 				perror("write");
 				goto err_close_ofd;
 			}
@@ -1064,13 +1054,13 @@ static int var_replace(struct node *n)
 	rc = file_set_mtime(tent, dfd, output);
 
 err_close_ofd:
-	close(ofd);
+	fd_close(ofd);
 err_free_buf:
 	free(b.s);
 err_close_ifd:
-	close(ifd);
+	fd_close(ifd);
 err_close_dfd:
-	close(dfd);
+	fd_close(dfd);
 	return rc;
 }
 

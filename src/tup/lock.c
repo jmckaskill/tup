@@ -1,9 +1,7 @@
-#define _ATFILE_SOURCE
+/* vim: set ts=8 sw=8 sts=8 noet tw=78: */
 #include "lock.h"
 #include "config.h"
 #include <stdio.h>
-#include <fcntl.h>
-#include <unistd.h>
 #include <time.h>
 
 /* So...the tri-lock business. There are three locks. They lock one thing - the
@@ -55,32 +53,29 @@
  * locks I don't get those issues.
  */
 
-static int sh_lock;
-static int obj_lock;
-static int tri_lock;
+static fd_t sh_lock;
+static fd_t obj_lock;
+static fd_t tri_lock;
 
 int tup_lock_init(void)
 {
-	sh_lock = openat(tup_top_fd(), TUP_SHARED_LOCK, O_RDWR);
-	if(sh_lock < 0) {
+	if(fd_openat(tup_top_fd(), TUP_SHARED_LOCK, O_RDWR, &sh_lock)) {
 		perror(TUP_SHARED_LOCK);
 		return -1;
 	}
-	if(tup_flock(sh_lock) < 0) {
+	if(fd_lock(sh_lock) < 0) {
 		return -1;
 	}
 
-	obj_lock = openat(tup_top_fd(), TUP_OBJECT_LOCK, O_RDWR);
-	if(obj_lock < 0) {
+	if(fd_openat(tup_top_fd(), TUP_OBJECT_LOCK, O_RDWR, &obj_lock)) {
 		perror(TUP_OBJECT_LOCK);
 		return -1;
 	}
-	if(tup_flock(obj_lock) < 0) {
+	if(fd_lock(obj_lock) < 0) {
 		return -1;
 	}
 
-	tri_lock = openat(tup_top_fd(), TUP_TRI_LOCK, O_RDWR);
-	if(tri_lock < 0) {
+	if(fd_openat(tup_top_fd(), TUP_TRI_LOCK, O_RDWR, &tri_lock)) {
 		perror(TUP_TRI_LOCK);
 		return -1;
 	}
@@ -89,90 +84,35 @@ int tup_lock_init(void)
 
 void tup_lock_exit(void)
 {
-	tup_unflock(obj_lock);
-	close(obj_lock);
+	fd_unlock(obj_lock);
+	fd_close(obj_lock);
 	/* Wait for the monitor to pick up the object lock */
-	tup_flock(tri_lock);
-	tup_unflock(tri_lock);
-	close(tri_lock);
-	tup_unflock(sh_lock);
-	close(sh_lock);
+	fd_lock(tri_lock);
+	fd_unlock(tri_lock);
+	fd_close(tri_lock);
+	fd_unlock(sh_lock);
+	fd_close(sh_lock);
 }
 
 void tup_lock_close(void)
 {
-	close(obj_lock);
-	close(tri_lock);
-	close(sh_lock);
+	fd_close(obj_lock);
+	fd_close(tri_lock);
+	fd_close(sh_lock);
 }
 
-int tup_sh_lock(void)
+fd_t tup_sh_lock(void)
 {
 	return sh_lock;
 }
 
-int tup_obj_lock(void)
+fd_t tup_obj_lock(void)
 {
 	return obj_lock;
 }
 
-int tup_tri_lock(void)
+fd_t tup_tri_lock(void)
 {
 	return tri_lock;
 }
 
-int tup_flock(int fd)
-{
-	struct flock fl = {
-		.l_type = F_WRLCK,
-		.l_whence = SEEK_SET,
-		.l_start = 0,
-		.l_len = 0,
-	};
-
-	if(fcntl(fd, F_SETLKW, &fl) < 0) {
-		perror("fcntl F_WRLCK");
-		return -1;
-	}
-	return 0;
-}
-
-int tup_unflock(int fd)
-{
-	struct flock fl = {
-		.l_type = F_UNLCK,
-		.l_whence = SEEK_SET,
-		.l_start = 0,
-		.l_len = 0,
-	};
-
-	if(fcntl(fd, F_SETLKW, &fl) < 0) {
-		perror("fcntl F_UNLCK");
-		return -1;
-	}
-	return 0;
-}
-
-int tup_wait_flock(int fd)
-{
-	struct flock fl;
-
-	while(1) {
-		struct timespec ts = {0, 10000000};
-
-		fl.l_type = F_WRLCK;
-		fl.l_whence = SEEK_SET;
-		fl.l_start = 0;
-		fl.l_len = 0;
-
-		if(fcntl(fd, F_GETLK, &fl) < 0) {
-			perror("fcntl F_GETLK");
-			return -1;
-		}
-
-		if(fl.l_type == F_WRLCK)
-			break;
-		nanosleep(&ts, NULL);
-	}
-	return 0;
-}

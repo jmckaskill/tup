@@ -1,3 +1,4 @@
+/* vim: set ts=8 sw=8 sts=8 noet tw=78: */
 #ifndef server_h
 #define server_h
 
@@ -8,8 +9,8 @@
 #include <sys/un.h>
 
 struct server {
-	int sd[2];
-	int lockfd;
+	fd_t sd[2];
+	fd_t lockfd;
 	pthread_t tid;
 	struct file_info finfo;
 	char file1[PATH_MAX];
@@ -17,7 +18,7 @@ struct server {
 };
 
 int server_init(void);
-void server_setenv(struct server *s, int vardict_fd);
+void server_setenv(struct server *s, fd_t vardict_fd);
 int start_server(struct server *s);
 int stop_server(struct server *s);
 

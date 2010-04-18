@@ -1,6 +1,7 @@
 #ifndef file_h
 #define file_h
 
+#include "fd.h"
 #include "tupid.h"
 #include "access_event.h"
 #include "linux/list.h"
@@ -19,8 +20,8 @@ struct tup_entry;
 int init_file_info(struct file_info *info);
 int handle_file(enum access_type at, const char *filename, const char *file2,
 		struct file_info *info);
-int write_files(tupid_t cmdid, tupid_t dt, int dfd, const char *debug_name,
+int write_files(tupid_t cmdid, tupid_t dt, fd_t dfd, const char *debug_name,
 		struct file_info *info, int *warnings);
-int file_set_mtime(struct tup_entry *tent, int dfd, const char *file);
+int file_set_mtime(struct tup_entry *tent, fd_t dfd, const char *file);
 
 #endif

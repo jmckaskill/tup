@@ -1,3 +1,4 @@
+/* vim: set ts=8 sw=8 sts=8 noet tw=78: */
 /*
  * I humbly present the Love-Trowbridge (Lovebridge?) recursive directory
  * scanning algorithm:
@@ -18,7 +19,6 @@
  *                 not yet created on bar, repeat step 1 on bar.
  */
 
-#define _ATFILE_SOURCE
 #include "tup/monitor.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -40,7 +40,7 @@
 #include "tup/updater.h"
 #include "tup/path.h"
 #include "tup/entry.h"
-#include "tup/fslurp.h"
+#include "tup/fd.h"
 #include "linux/rbtree.h"
 
 #define MONITOR_LOOP_RETRY -2
@@ -59,7 +59,7 @@ struct moved_from_event {
 
 static int monitor_set_pid(int pid);
 static int monitor_loop(void);
-static int wp_callback(tupid_t newdt, int dfd, const char *file);
+static int wp_callback(tupid_t newdt, fd_t dfd, const char *file);
 static int events_queued(void);
 static int queue_event(struct inotify_event *e);
 static int flush_queue(void);
@@ -99,7 +99,7 @@ int monitor(int argc, char **argv)
 {
 	int x;
 	int rc = 0;
-	int mon_fd;
+	fd_t mon_fd;
 
 	for(x=1; x<argc; x++) {
 		if(strcmp(argv[x], "-d") == 0) {
@@ -112,8 +112,7 @@ int monitor(int argc, char **argv)
 	sigaction(SIGTERM, &sigact, NULL);
 	sigaction(SIGUSR1, &sigact, NULL);
 
-	mon_fd = openat(tup_top_fd(), TUP_MONITOR_LOCK, O_RDWR);
-	if(mon_fd < 0) {
+	if(fd_openat(tup_top_fd(), TUP_MONITOR_LOCK, O_RDWR, &mon_fd)) {
 		perror(TUP_MONITOR_LOCK);
 		return -1;
 	}
@@ -154,8 +153,8 @@ int monitor(int argc, char **argv)
 		/* Remove our object lock, then wait for the child process to get
 		 * it.
 		 */
-		tup_unflock(tup_obj_lock());
-		if(tup_wait_flock(tup_obj_lock()) < 0)
+		fd_unlock(tup_obj_lock());
+		if(fd_wait_lock(tup_obj_lock()) < 0)
 			exit(1);
 		exit(0);
 	}
@@ -163,7 +162,7 @@ int monitor(int argc, char **argv)
 	/* Child must re-acquire the object lock, since we lost it at the
 	 * fork
 	 */
-	if(tup_flock(tup_obj_lock()) < 0) {
+	if(fd_lock(tup_obj_lock()) < 0) {
 		rc = -1;
 		goto close_inot;
 	}
@@ -204,7 +203,7 @@ int monitor(int argc, char **argv)
 				return -1;
 			tup_lock_close();
 
-			if(fchdir(tup_top_fd()) < 0) {
+			if(fd_chdir(tup_top_fd()) < 0) {
 				perror("fchdir tup_top");
 				return -1;
 			}
@@ -229,7 +228,7 @@ int monitor(int argc, char **argv)
 				}
 			}
 
-			if(tup_unflock(tup_sh_lock()) < 0) {
+			if(fd_unlock(tup_sh_lock()) < 0) {
 				return -1;
 			}
 			if(monitor_set_pid(getpid()) < 0)
@@ -241,7 +240,7 @@ int monitor(int argc, char **argv)
 close_inot:
 	close(inot_fd);
 close_mon:
-	close(mon_fd);
+	fd_close(mon_fd);
 	return rc;
 }
 
@@ -249,14 +248,13 @@ static int monitor_set_pid(int pid)
 {
 	char buf[32];
 	int len;
-	int fd;
+	fd_t fd;
 
-	fd = openat(tup_top_fd(), MONITOR_PID_FILE, O_WRONLY|O_CREAT|O_TRUNC, 0666);
-	if(fd < 0) {
+	if(fd_createat(tup_top_fd(), MONITOR_PID_FILE, O_WRONLY|O_TRUNC, 0666, &fd)) {
 		perror(MONITOR_PID_FILE);
 		return -1;
 	}
-	if(tup_flock(fd) < 0) {
+	if(fd_lock(fd) < 0) {
 		return -1;
 	}
 	len = snprintf(buf, sizeof(buf), "%i", pid);
@@ -264,39 +262,38 @@ static int monitor_set_pid(int pid)
 		fprintf(stderr, "Buf is sized too small in monitor_set_pid\n");
 		return -1;
 	}
-	if(write(fd, buf, len) < 0) {
+	if(fd_write(fd, buf, len) < 0) {
 		perror("write");
 		return -1;
 	}
-	if(ftruncate(fd, len) < 0) {
+	if(fd_truncate(fd, len) < 0) {
 		perror("ftruncate");
 		return -1;
 	}
-	if(tup_unflock(fd) < 0) {
+	if(fd_unlock(fd) < 0) {
 		return -1;
 	}
-	close(fd);
+	fd_close(fd);
 	return 0;
 }
 
 int monitor_get_pid(void)
 {
 	struct buf b;
-	int fd;
+	fd_t fd;
 	int rc = -1;
 
-	fd = openat(tup_top_fd(), MONITOR_PID_FILE, O_RDWR, 0666);
-	if(fd < 0) {
+	if(fd_openat(tup_top_fd(), MONITOR_PID_FILE, O_RDWR, &fd)) {
 		if(errno != ENOENT) {
 			perror(MONITOR_PID_FILE);
 			return -1;
 		}
 		return -1;
 	}
-	if(tup_flock(fd) < 0) {
+	if(fd_lock(fd) < 0) {
 		return -1;
 	}
-	if(fslurp_null(fd, &b) < 0) {
+	if(fd_slurp(fd, &b) < 0) {
 		goto out;
 	}
 
@@ -305,10 +302,10 @@ int monitor_get_pid(void)
 	}
 	free(b.s);
 out:
-	if(tup_unflock(fd) < 0) {
+	if(fd_unlock(fd) < 0) {
 		return -1;
 	}
-	close(fd);
+	fd_close(fd);
 
 	if(rc > 0) {
 		/* Just using getpriority() to see if the monitor process is
@@ -392,19 +389,19 @@ static int monitor_loop(void)
 					if(rc < 0)
 						return rc;
 					locked = 0;
-					if(tup_flock(tup_tri_lock()) < 0) {
+					if(fd_lock(tup_tri_lock()) < 0) {
 						return -1;
 					}
-					if(tup_unflock(tup_obj_lock()) < 0) {
+					if(fd_unlock(tup_obj_lock()) < 0) {
 						return -1;
 					}
 					DEBUGP("monitor off\n");
 				}
 				if((e->mask & IN_CLOSE) && !locked) {
-					if(tup_flock(tup_obj_lock()) < 0) {
+					if(fd_lock(tup_obj_lock()) < 0) {
 						return -1;
 					}
-					if(tup_unflock(tup_tri_lock()) < 0) {
+					if(fd_unlock(tup_tri_lock()) < 0) {
 						return -1;
 					}
 					locked = 1;
@@ -463,14 +460,14 @@ int stop_monitor(void)
 	return 0;
 }
 
-static int wp_callback(tupid_t newdt, int dfd, const char *file)
+static int wp_callback(tupid_t newdt, fd_t dfd, const char *file)
 {
 	int wd;
 	uint32_t mask;
 
 	DEBUGP("add watch: '%s'\n", file);
 
-	if(fchdir(dfd) < 0) {
+	if(fd_chdir(dfd) < 0) {
 		perror("fchdir");
 		return -1;
 	}
@@ -596,7 +593,7 @@ static int flush_queue(void)
 			return -1;
 		}
 		if(pid == 0) {
-			if(fchdir(tup_top_fd()) < 0) {
+			if(fd_chdir(tup_top_fd()) < 0) {
 				perror("fchdir tup_top");
 				exit(1);
 			}
@@ -787,6 +784,7 @@ static void monitor_rmdir_cb(tupid_t dt)
 static int handle_event(struct monitor_event *m)
 {
 	struct dircache *dc;
+	fprintf(stderr, "test 1\n");
 
 	if(m->e.mask & IN_IGNORED) {
 		/* Ignore IN_IGNORED events - we'll already have removed the
@@ -813,7 +811,7 @@ static int handle_event(struct monitor_event *m)
 		}
 		if(m->e.mask & IN_ISDIR) {
 			struct tup_entry *tent;
-			int fd;
+			fd_t fd;
 			int rc;
 
 			if(tup_db_select_tent(from_dc->dt_node.tupid, mfe->m->e.name, &tent) < 0)
@@ -824,8 +822,7 @@ static int handle_event(struct monitor_event *m)
 				return -1;
 			if(tup_db_modify_dir(tent->tnode.tupid) < 0)
 				return -1;
-			fd = tup_db_open_tupid(dc->dt_node.tupid);
-			if(fd < 0)
+			if(tup_db_open_tupid(dc->dt_node.tupid, &fd))
 				return -1;
 			/* Existing watches will be replaced by the
 			 * inotify_add_watch calls that happen here. No sense
@@ -833,7 +830,7 @@ static int handle_event(struct monitor_event *m)
 			 * dircache already handles this case.
 			 */
 			rc = watch_path(dc->dt_node.tupid, fd, m->e.name, NULL, wp_callback);
-			close(fd);
+			fd_close(fd);
 			if(rc < 0) {
 				return -1;
 			}
@@ -851,14 +848,15 @@ static int handle_event(struct monitor_event *m)
 	 * they are IN_CREATE.
 	 */
 	if(m->e.mask & IN_CREATE || m->e.mask & IN_MOVED_TO) {
-		int fd;
+		fd_t fd;
 		int rc;
+		fprintf(stderr, "test 2\n");
 
-		fd = tup_db_open_tupid(dc->dt_node.tupid);
-		if(fd < 0)
+		if(tup_db_open_tupid(dc->dt_node.tupid, &fd))
 			return -1;
 		rc = watch_path(dc->dt_node.tupid, fd, m->e.name, NULL, wp_callback);
-		close(fd);
+		fprintf(stderr, "test 3 %d\n", rc);
+		fd_close(fd);
 		return rc;
 	}
 	if(!(m->e.mask & IN_ISDIR) &&

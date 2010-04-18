@@ -1,5 +1,4 @@
-/* _ATFILE_SOURCE for fstatat */
-#define _ATFILE_SOURCE
+/* vim: set ts=8 sw=8 sts=8 noet tw=78: */
 #include "file.h"
 #include "access_event.h"
 #include "debug.h"
@@ -10,7 +9,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <fcntl.h>
 #include <sys/stat.h>
 
 struct file_entry {
@@ -33,7 +31,7 @@ static int handle_symlink(const char *from, const char *to,
 			  struct file_info *info);
 static void check_unlink_list(const struct pel_group *pg, struct list_head *u_list);
 static void handle_unlink(struct file_info *info);
-static int update_write_info(tupid_t cmdid, tupid_t dt, int dfd,
+static int update_write_info(tupid_t cmdid, tupid_t dt, fd_t dfd,
 			     const char *debug_name, struct file_info *info,
 			     int *warnings, struct list_head *entrylist);
 static int update_read_info(tupid_t cmdid, tupid_t dt, struct file_info *info,
@@ -96,7 +94,7 @@ int handle_file(enum access_type at, const char *filename, const char *file2,
 	return rc;
 }
 
-int write_files(tupid_t cmdid, tupid_t dt, int dfd, const char *debug_name,
+int write_files(tupid_t cmdid, tupid_t dt, fd_t dfd, const char *debug_name,
 		struct file_info *info, int *warnings)
 {
 	struct list_head *entrylist;
@@ -117,10 +115,10 @@ int write_files(tupid_t cmdid, tupid_t dt, int dfd, const char *debug_name,
 	return -1;
 }
 
-int file_set_mtime(struct tup_entry *tent, int dfd, const char *file)
+int file_set_mtime(struct tup_entry *tent, fd_t dfd, const char *file)
 {
 	struct stat buf;
-	if(fstatat(dfd, file, &buf, AT_SYMLINK_NOFOLLOW) != 0) {
+	if(fd_lstatat(dfd, file, &buf) != 0) {
 		fprintf(stderr, "tup error: file_set_mtime() fstatat failed.\n");
 		perror(file);
 		return -1;
@@ -274,7 +272,7 @@ static void handle_unlink(struct file_info *info)
 	}
 }
 
-static int update_write_info(tupid_t cmdid, tupid_t dt, int dfd,
+static int update_write_info(tupid_t cmdid, tupid_t dt, fd_t dfd,
 			     const char *debug_name, struct file_info *info,
 			     int *warnings, struct list_head *entrylist)
 {
@@ -342,7 +340,7 @@ static int update_write_info(tupid_t cmdid, tupid_t dt, int dfd,
 		if(!tent) {
 			fprintf(stderr, "tup error: File '%s' was written to, but is not in .tup/db. You probably should specify it as an output for the command '%s'\n", w->filename, debug_name);
 			fprintf(stderr, " Unlink: [35m%s[0m\n", w->filename);
-			unlinkat(dfd, w->filename, 0);
+			fd_unlinkat(dfd, w->filename);
 			write_bork = 1;
 		} else {
 			tup_entry_list_add(tent, entrylist);
@@ -366,15 +364,14 @@ out_skip:
 		if(tup_db_select_tent(dt, sym_entry->to, &tent) < 0)
 			return -1;
 		if(!tent) {
-			int dirfd;
+			fd_t dirfd;
 			fprintf(stderr, "tup error: File '%s' was written as a symlink, but is not in .tup/db. You probably should specify it as an output for command '%s'\n", sym_entry->to, debug_name);
 			fprintf(stderr, " Unlink: [35m%s[0m\n", sym_entry->to);
-			dirfd = tup_entry_open_tupid(dt);
-			if(dirfd < 0) {
+			if(tup_entry_open_tupid(dt, &dirfd)) {
 				fprintf(stderr, "Unable to automatically unlink file.\n");
 			} else {
-				unlinkat(dirfd, sym_entry->to, 0);
-				close(dirfd);
+				fd_unlinkat(dirfd, sym_entry->to);
+				fd_close(dirfd);
 			}
 			write_bork = 1;
 			goto skip_sym;

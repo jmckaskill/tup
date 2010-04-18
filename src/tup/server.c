@@ -1,3 +1,4 @@
+/* vim: set ts=8 sw=8 sts=8 noet tw=78: */
 #include "server.h"
 #include "file.h"
 #include "debug.h"
@@ -11,7 +12,7 @@
 #include <sys/socket.h>
 
 static void *message_thread(void *arg);
-static int recvall(int sd, void *buf, size_t len);
+static int recvall(fd_t sd, void *buf, size_t len);
 
 static char ldpreload_path[PATH_MAX];
 
@@ -27,16 +28,16 @@ int server_init(void)
 	return 0;
 }
 
-void server_setenv(struct server *s, int vardict_fd)
+void server_setenv(struct server *s, fd_t vardict_fd)
 {
 	char fd_name[32];
-	snprintf(fd_name, sizeof(fd_name), "%i", s->sd[1]);
+	snprintf(fd_name, sizeof(fd_name), "%i", s->sd[1].fd);
 	fd_name[31] = 0;
 	setenv(TUP_SERVER_NAME, fd_name, 1);
-	snprintf(fd_name, sizeof(fd_name), "%i", vardict_fd);
+	snprintf(fd_name, sizeof(fd_name), "%i", vardict_fd.fd);
 	fd_name[31] = 0;
 	setenv(TUP_VARDICT_NAME, fd_name, 1);
-	snprintf(fd_name, sizeof(fd_name), "%i", s->lockfd);
+	snprintf(fd_name, sizeof(fd_name), "%i", s->lockfd.fd);
 	fd_name[31] = 0;
 	setenv(TUP_LOCK_NAME, fd_name, 1);
 #ifdef __APPLE__
@@ -49,7 +50,7 @@ void server_setenv(struct server *s, int vardict_fd)
 
 int start_server(struct server *s)
 {
-	if(socketpair(AF_UNIX, SOCK_STREAM, 0, s->sd) < 0) {
+	if(fd_socketpair(s->sd, SOCK_STREAM) < 0) {
 		perror("socketpair");
 		return -1;
 	}
@@ -58,8 +59,8 @@ int start_server(struct server *s)
 
 	if(pthread_create(&s->tid, NULL, message_thread, s) < 0) {
 		perror("pthread_create");
-		close(s->sd[0]);
-		close(s->sd[1]);
+		fd_close(s->sd[0]);
+		fd_close(s->sd[1]);
 		return -1;
 	}
 
@@ -75,14 +76,14 @@ int stop_server(struct server *s)
 	memset(&e, 0, sizeof(e));
 	e.at = ACCESS_STOP_SERVER;
 
-	rc = send(s->sd[1], &e, sizeof(e), 0);
+	rc = fd_send(s->sd[1], &e, sizeof(e), 0);
 	if(rc != sizeof(e)) {
 		perror("send");
 		return -1;
 	}
 	pthread_join(s->tid, &retval);
-	close(s->sd[0]);
-	close(s->sd[1]);
+	fd_close(s->sd[0]);
+	fd_close(s->sd[1]);
 
 	if(retval == NULL)
 		return 0;
@@ -130,14 +131,14 @@ static void *message_thread(void *arg)
 	return NULL;
 }
 
-static int recvall(int sd, void *buf, size_t len)
+static int recvall(fd_t sd, void *buf, size_t len)
 {
 	size_t recvd = 0;
 	char *cur = buf;
 
 	while(recvd < len) {
 		int rc;
-		rc = recv(sd, cur + recvd, len - recvd, 0);
+		rc = fd_recv(sd, cur + recvd, len - recvd, 0);
 		if(rc < 0) {
 			perror("recv");
 			return -1;
