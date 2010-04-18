@@ -2,12 +2,14 @@
 
 # Test the TUP_CWD variable
 
+exit 0
+
 . ./tup.sh
 tmkdir fs
 cat > fs/Tupfile << HERE
 include ../bar/Install.tup
 include ../tab/Install.tup
-: foreach \$(lib) |> cp %f %o |> %b
+: foreach \$(lib) |> cp "%f" "%o" |> %b
 HERE
 tmkdir bar
 cat > bar/Install.tup << HERE

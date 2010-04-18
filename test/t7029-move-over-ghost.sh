@@ -12,10 +12,10 @@ echo 'heyo' > a/ghost
 echo ': |> if [ -f b/ghost ]; then cat b/ghost; else echo nofile; fi > %o |> output' > Tupfile
 
 update
-echo 'nofile' | diff - output
+echo 'nofile' | diff -b - output
 
 mv a b
 update
-echo 'heyo' | diff - output
+echo 'heyo' | diff -b - output
 
 eotup

@@ -2,6 +2,7 @@
 
 # Make sure we can use a symlink from the monitor
 . ./tup.sh
+unix_only
 check_monitor_supported
 tup monitor
 

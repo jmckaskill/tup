@@ -8,9 +8,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifndef _WIN32
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#endif
 
 struct id_flags {
 	tupid_t tupid;
@@ -264,7 +267,7 @@ static int tup_del_id_type(tupid_t tupid, int type, int force)
 		 * been executed yet.
 		 */
 		if(modified == 1)
-			fprintf(stderr, "tup warning: generated file ID %lli was deleted outside of tup. This file may be re-created on the next update.\n", tupid);
+			fprintf(stderr, "tup warning: generated file ID %"PRI_TUPID" was deleted outside of tup. This file may be re-created on the next update.\n", tupid);
 		/* If we're not forcing the deletion, just return here (the
 		 * node won't actually be removed from tup). The fact that the
 		 * command is in modify will take care of dependencies, and
@@ -465,11 +468,11 @@ int add_node_to_list(tupid_t dt, struct pel_group *pg, struct list_head *list,
 	if(!tent) {
 		if(sotgv) {
 			if(tup_db_node_insert_tent(new_dt, pel->path, pel->len, TUP_NODE_GHOST, -1, &tent) < 0) {
-				fprintf(stderr, "Error: Node '%.*s' doesn't exist in directory %lli, and no luck creating a ghost node there.\n", pel->len, pel->path, new_dt);
+				fprintf(stderr, "Error: Node '%.*s' doesn't exist in directory %"PRI_TUPID", and no luck creating a ghost node there.\n", pel->len, pel->path, new_dt);
 				return -1;
 			}
 		} else {
-			fprintf(stderr, "tup error: Expected node '%.*s' to be in directory %lli, but it is not there.\n", pel->len, pel->path, new_dt);
+			fprintf(stderr, "tup error: Expected node '%.*s' to be in directory %"PRI_TUPID", but it is not there.\n", pel->len, pel->path, new_dt);
 			tup_db_print(stderr, new_dt);
 			return -1;
 		}
@@ -509,7 +512,7 @@ int gimme_node_or_make_ghost(tupid_t dt, const char *name,
 		return -1;
 	if(!*entry) {
 		if(tup_db_node_insert_tent(new_dt, pel->path, pel->len, TUP_NODE_GHOST, -1, entry) < 0) {
-			fprintf(stderr, "Error: Node '%.*s' doesn't exist in directory %lli, and no luck creating a ghost node there.\n", pel->len, pel->path, new_dt);
+			fprintf(stderr, "Error: Node '%.*s' doesn't exist in directory %"PRI_TUPID", and no luck creating a ghost node there.\n", pel->len, pel->path, new_dt);
 			return -1;
 		}
 	}
@@ -527,19 +530,19 @@ int get_path_elements(const char *dir, struct pel_group *pg)
 	pg->pg_flags = 0;
 	INIT_LIST_HEAD(&pg->path_list);
 
-	if(dir[0] == '/')
+	if(is_path_abs(dir))
 		pg->pg_flags |= PG_ROOT;
 
 	while(1) {
 		const char *path;
 		int len;
-		while(*p && *p == '/') {
+		while(*p && is_path_sep(p)) {
 			p++;
 		}
 		if(!*p)
 			break;
 		path = p;
-		while(*p && *p != '/') {
+		while(*p && !is_path_sep(p)) {
 			p++;
 		}
 		len = p - path;
@@ -592,11 +595,13 @@ skip_num_elements:
 			/* Returns are 0 here to indicate file is outside of
 			 * .tup
 			 */
-			if(list_empty(&pg->path_list) || top[0] != '/') {
+			if(list_empty(&pg->path_list) || !is_path_abs(top)) {
 				pg->pg_flags |= PG_OUTSIDE_TUP;
 				return 0;
 			}
-			top++;
+			while (*top && is_path_sep(top)) {
+				top++;
+			}
 			pel = list_entry(pg->path_list.next, struct path_element, list);
 			if(strncmp(top, pel->path, pel->len) != 0) {
 				pg->pg_flags |= PG_OUTSIDE_TUP;

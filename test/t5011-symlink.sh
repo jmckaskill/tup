@@ -1,6 +1,7 @@
 #! /bin/sh -e
 
 . ./tup.sh
+unix_only
 echo 'this is a file' > file1
 cat > Tupfile << HERE
 : file1 |> ln -s %f %o |> file1.sym

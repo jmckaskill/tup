@@ -3,6 +3,7 @@
 # Make sure open with O_RDWR works properly
 
 . ./tup.sh
+unix_only
 
 cat > prog.c << HERE
 #include <stdio.h>

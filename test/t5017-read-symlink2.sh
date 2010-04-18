@@ -3,6 +3,7 @@
 # Same as t5016, only the link points to a file in a subdirectory.
 
 . ./tup.sh
+unix_only
 tmkdir arch
 echo "#define FOO 3" > arch/foo-x86.h
 echo "#define FOO 4" > arch/foo-ppc.h

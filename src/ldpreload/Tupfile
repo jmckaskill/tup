@@ -1,4 +1,10 @@
 include_rules
 
-CFLAGS += $(FPIC) -ansi -pedantic
-: foreach *.c |> !cc |> %B.o
+ifeq (@(TUP_PLATFORM),windows)
+  srcs += dllinject.c
+else
+  srcs += ldpreload.c
+endif
+
+: foreach $(srcs) |> !cc |> %B.o
+

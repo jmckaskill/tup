@@ -10,7 +10,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifndef _WIN32
 #include <sys/stat.h>
+#endif
 
 struct file_entry {
 	char *filename;
@@ -264,6 +267,11 @@ static void handle_unlink(struct file_info *info)
 				del_entry(fent);
 			}
 		}
+		list_for_each_entry_safe(struct file_entry, fent, tmp, &info->ghost_list, list) {
+			if(pg_eq(&fent->pg, &u->pg)) {
+				del_entry(fent);
+			}
+		}
 
 		/* TODO: Do we need this? I think this should only apply to
 		 * temporary files.
@@ -322,9 +330,9 @@ static int update_write_info(tupid_t cmdid, tupid_t dt, fd_t dfd,
 			tupid_tree_for_each(tupid, rbn, &symtree) {
 				tent = tup_entry_find(tupid);
 				if(tent) {
-					fprintf(stderr, " -- Symlink %lli -> %lli in dir %lli\n", tent->tnode.tupid, tent->sym, tent->dt);
+					fprintf(stderr, " -- Symlink %"PRI_TUPID" -> %"PRI_TUPID" in dir %"PRI_TUPID"\n", tent->tnode.tupid, tent->sym, tent->dt);
 				} else {
-					fprintf(stderr, " -- Unknown symlink %lli\n", tupid);
+					fprintf(stderr, " -- Unknown symlink %"PRI_TUPID"\n", tupid);
 				}
 			}
 			return -1;

@@ -1,29 +1,55 @@
 /* vim: set ts=8 sw=8 sts=8 noet tw=78: */
 #include "getexecwd.h"
 #include "compat.h"
+#include "fd.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifdef _WIN32
+#include <compat/win32/misc.h>
+#include <ldpreload/dllinject.h>
+#else
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#endif
 
 static char mycwd[PATH_MAX];
 static int check_path(const char *path, const char *file);
 
+
+#ifdef _WIN32
+int init_getexecwd(const char *argv0)
+{
+	char* slash;
+	if (GetModuleFileNameA(NULL, mycwd, PATH_MAX - 1) == 0)
+		return -1;
+
+	mycwd[PATH_MAX - 1] = '\0';
+	slash = strrchr(mycwd, '\\');
+	if (slash) {
+		*slash = '\0';
+	}
+
+	tup_inject_setexecdir(mycwd);
+
+	return 0;
+}
+
+#else
 int init_getexecwd(const char *argv0)
 {
 	char *slash;
-	int curfd;
+	fd_t curfd;
 	int rc = -1;
 
 	strcpy(mycwd, argv0);
 	slash = strrchr(mycwd, '/');
 	if(slash) {
 		/* Relative and absolute paths */
-		curfd = open(".", O_RDONLY);
-		if(curfd < 0) {
+		if (fd_open(".", O_RDONLY, &curfd)) {
 			perror(".");
 			return -1;
 		}
@@ -36,13 +62,13 @@ int init_getexecwd(const char *argv0)
 			perror("getcwd");
 			goto out_err;
 		}
-		if(fchdir(curfd) < 0) {
+		if(fd_chdir(curfd) < 0) {
 			perror("fchdir");
 			goto out_err;
 		}
 		rc = 0;
 out_err:
-		close(curfd);
+		fd_close(curfd);
 	} else {
 		/* Use $PATH */
 		char *path;
@@ -67,11 +93,6 @@ out_err:
 	}
 
 	return rc;
-}
-
-const char *getexecwd(void)
-{
-	return mycwd;
 }
 
 static int check_path(const char *path, const char *file)
@@ -101,3 +122,10 @@ out_err:
 	mycwd[0] = 0;
 	return -1;
 }
+#endif
+
+const char *getexecwd(void)
+{
+	return mycwd;
+}
+

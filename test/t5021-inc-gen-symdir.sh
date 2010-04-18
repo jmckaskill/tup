@@ -5,6 +5,7 @@
 # later try to include a Tupfile by using that directory link.
 
 . ./tup.sh
+unix_only
 
 tmkdir foo
 tmkdir foo/arch-x86

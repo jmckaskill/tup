@@ -2,7 +2,10 @@
 #include "config.h"
 #include "db.h"
 #include "lock.h"
+
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 
 int tup_init(void)
 {

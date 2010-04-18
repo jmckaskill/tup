@@ -1,2 +1,7 @@
 include_rules
-: foreach *.c |> !cc |> %B.o
+
+ifeq (@(TUP_PLATFORM),windows)
+else
+  : foreach *.c |> !cc |> %B.o
+endif
+

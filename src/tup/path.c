@@ -7,9 +7,12 @@
 #include "config.h"
 #include "entry.h"
 #include <stdio.h>
+
+#ifndef _WIN32
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#endif
 
 int watch_path(tupid_t dt, fd_t dfd, const char *file, struct rb_root *tree,
 	       int (*callback)(tupid_t newdt, fd_t dfd, const char *file))

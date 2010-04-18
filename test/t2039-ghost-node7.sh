@@ -13,20 +13,20 @@ cat > ok.sh << HERE
 if [ -f include/ghost ]; then cat include/ghost; else echo nofile; fi
 HERE
 cat > Tupfile << HERE
-: |> ./ok.sh > %o |> output.txt
-: |> ./foo.sh > %o |> foo-output.txt
+: |> sh ok.sh > %o |> output.txt
+: |> sh foo.sh > %o |> foo-output.txt
 HERE
 chmod +x ok.sh
 cp ok.sh foo.sh
 tup touch ok.sh foo.sh Tupfile
 update
-echo nofile | diff output.txt -
-echo nofile | diff foo-output.txt -
+echo nofile | diff -b output.txt -
+echo nofile | diff -b foo-output.txt -
 
 echo 'alive' > include/ghost
 tup touch include/ghost
 update
-echo alive | diff output.txt -
-echo alive | diff foo-output.txt -
+echo alive | diff -b output.txt -
+echo alive | diff -b foo-output.txt -
 
 eotup

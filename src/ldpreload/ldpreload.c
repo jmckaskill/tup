@@ -53,8 +53,6 @@ typedef union{
 	void* p;
 } fp_cast;
 
-#define PTR_TO_FP(val) ((union fp_cast_union) (val)).fp
-
 #define WRAP(name) \
 	static t_##name s_##name; \
 	if(!s_##name) { \

@@ -12,7 +12,7 @@ tup touch foo.txt Tupfile
 varsetall FOO=sup
 update
 
-echo "hey sup yo" | diff out.copied -
+echo "hey sup yo" | diff -b out.copied -
 check_not_exist foo.copied
 
 eotup

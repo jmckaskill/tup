@@ -1,9 +1,11 @@
 #! /bin/sh -e
 
+
 # See if we make a ghost node because of a symlink that it gets deleted when
 # the broken symlink is removed.
 
 . ./tup.sh
+unix_only
 ln -s ghost foo
 tup touch foo
 tup_object_exist . ghost foo

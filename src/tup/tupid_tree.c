@@ -8,7 +8,7 @@ struct tupid_tree *tupid_tree_search(struct rb_root *root, tupid_t tupid)
 
 	while (node) {
 		struct tupid_tree *data = rb_entry(node, struct tupid_tree, rbn);
-		int result;
+		tupid_t result;
 
 		result = tupid - data->tupid;
 
@@ -29,7 +29,7 @@ int tupid_tree_insert(struct rb_root *root, struct tupid_tree *data)
 	/* Figure out where to put new node */
 	while (*new) {
 		struct tupid_tree *this = rb_entry(*new, struct tupid_tree, rbn);
-		int result = data->tupid - this->tupid;
+		tupid_t result = data->tupid - this->tupid;
 
 		parent = *new;
 		if (result < 0)
@@ -58,7 +58,7 @@ int tupid_tree_add(struct rb_root *root, tupid_t tupid)
 	}
 	tt->tupid = tupid;
 	if(tupid_tree_insert(root, tt) < 0) {
-		fprintf(stderr, "Error: Unable to insert duplicate tupid %lli\n", tupid);
+		fprintf(stderr, "Error: Unable to insert duplicate tupid %"PRI_TUPID"\n", tupid);
 		tup_db_print(stderr, tupid);
 		return -1;
 	}
@@ -127,7 +127,7 @@ int tree_entry_add(struct rb_root *tree, tupid_t tupid, int type, int *count)
 	te->tnode.tupid = tupid;
 	te->type = type;
 	if(tupid_tree_insert(tree, &te->tnode) < 0) {
-		fprintf(stderr, "tup internal error: Duplicate tupid %lli in tree_entry_add?\n", tupid);
+		fprintf(stderr, "tup internal error: Duplicate tupid %"PRI_TUPID" in tree_entry_add?\n", tupid);
 		free(te);
 		return -1;
 	} else {

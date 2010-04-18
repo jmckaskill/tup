@@ -10,7 +10,7 @@ cat > Tupfile << HERE
 HERE
 tup touch Tupfile
 update
-echo nofile | diff - output.txt
+echo nofile | diff -b - output.txt
 
 cat > Tupfile << HERE
 HERE

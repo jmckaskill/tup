@@ -3,11 +3,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
-#include <fcntl.h>
 #include <time.h>
 #include <errno.h>
-#include <unistd.h>
 #include "tup/config.h"
 #include "tup/lock.h"
 #include "tup/getexecwd.h"
@@ -20,6 +17,14 @@
 #include "tup/version.h"
 #include "tup/path.h"
 #include "tup/entry.h"
+
+#ifdef _WIN32
+#include <compat/win32/misc.h>
+#else
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#endif
 
 static int init(int argc, char **argv);
 static int graph_cb(void *arg, struct tup_entry *tent, int style);
@@ -139,7 +144,7 @@ int main(int argc, char **argv)
 	}
 
 	tup_cleanup();
-	return rc;
+	return abs(rc);
 }
 
 static int init(int argc, char **argv)
@@ -147,7 +152,7 @@ static int init(int argc, char **argv)
 	int x;
 	int db_sync = 1;
 	int force_init = 0;
-	int fd;
+	fd_t fd;
 
 	for(x=0; x<argc; x++) {
 		if(strcmp(argv[x], "--no-sync") == 0) {
@@ -158,8 +163,7 @@ static int init(int argc, char **argv)
 		}
 	}
 
-	fd = open(".", O_RDONLY);
-	if(fd < 0) {
+	if (fd_open(".", O_RDONLY, &fd)) {
 		perror(".");
 		return -1;
 	}
@@ -174,11 +178,11 @@ static int init(int argc, char **argv)
 		}
 		goto err_close;
 	}
-	if(fchdir(fd) < 0) {
+	if(fd_chdir(fd) < 0) {
 		perror("fchdir");
 		goto err_close;
 	}
-	close(fd);
+	fd_close(fd);
 
 	if(mkdir(TUP_DIR, 0777) != 0) {
 		perror(TUP_DIR);
@@ -189,30 +193,40 @@ static int init(int argc, char **argv)
 		return -1;
 	}
 
-	if(creat(TUP_OBJECT_LOCK, 0666) < 0) {
+	if(fd_create(TUP_OBJECT_LOCK, O_RDONLY, 0666, &fd)) {
 		perror(TUP_OBJECT_LOCK);
 		return -1;
 	}
-	if(creat(TUP_SHARED_LOCK, 0666) < 0) {
+	fd_close(fd);
+
+	if(fd_create(TUP_SHARED_LOCK, O_RDONLY, 0666, &fd) < 0) {
 		perror(TUP_SHARED_LOCK);
 		return -1;
 	}
-	if(creat(TUP_TRI_LOCK, 0666) < 0) {
+	fd_close(fd);
+
+	if(fd_create(TUP_TRI_LOCK, O_RDONLY, 0666, &fd) < 0) {
 		perror(TUP_TRI_LOCK);
 		return -1;
 	}
-	if(creat(TUP_MONITOR_LOCK, 0666) < 0) {
+	fd_close(fd);
+
+	if(fd_create(TUP_MONITOR_LOCK, O_RDONLY, 0666, &fd) < 0) {
 		perror(TUP_MONITOR_LOCK);
 		return -1;
 	}
-	if(creat(TUP_VARDICT_FILE, 0666) < 0) {
+	fd_close(fd);
+
+	if(fd_create(TUP_VARDICT_FILE, O_RDONLY, 0666, &fd) < 0) {
 		perror(TUP_VARDICT_FILE);
 		return -1;
 	}
+	fd_close(fd);
+
 	return 0;
 
 err_close:
-	close(fd);
+	fd_close(fd);
 	return -1;
 }
 
@@ -353,7 +367,7 @@ static int graph(int argc, char **argv)
 				 */
 			}
 		}
-		printf("\tnode_%lli [label=\"", n->tnode.tupid);
+		printf("\tnode_%"PRI_TUPID" [label=\"", n->tnode.tupid);
 		s = n->tent->name.s;
 		if(s[0] == '^') {
 			s++;
@@ -365,19 +379,19 @@ static int graph(int argc, char **argv)
 		} else {
 			print_name(s, 0);
 		}
-		printf("\\n%lli\" shape=\"%s\" color=\"#%06x\" fontcolor=\"#%06x\" style=%s];\n", n->tnode.tupid, shape, color, fontcolor, style);
+		printf("\\n%"PRI_TUPID"\" shape=\"%s\" color=\"#%06x\" fontcolor=\"#%06x\" style=%s];\n", n->tnode.tupid, shape, color, fontcolor, style);
 		if(n->tent->dt) {
 			struct node *tmp;
 			tmp = find_node(&g, n->tent->dt);
 			if(tmp)
-				printf("\tnode_%lli -> node_%lli [dir=back color=\"#888888\" arrowtail=odot]\n", n->tnode.tupid, n->tent->dt);
+				printf("\tnode_%"PRI_TUPID" -> node_%"PRI_TUPID" [dir=back color=\"#888888\" arrowtail=odot]\n", n->tnode.tupid, n->tent->dt);
 		}
 		if(n->tent->sym != -1)
-			printf("\tnode_%lli -> node_%lli [dir=back color=\"#00BBBB\" arrowtail=vee]\n", n->tent->sym, n->tnode.tupid);
+			printf("\tnode_%"PRI_TUPID" -> node_%"PRI_TUPID" [dir=back color=\"#00BBBB\" arrowtail=vee]\n", n->tent->sym, n->tnode.tupid);
 
 		e = n->edges;
 		while(e) {
-			printf("\tnode_%lli -> node_%lli [dir=back,style=\"%s\"]\n", e->dest->tnode.tupid, n->tnode.tupid, (e->style == TUP_LINK_STICKY) ? "dotted" : "solid");
+			printf("\tnode_%"PRI_TUPID" -> node_%"PRI_TUPID" [dir=back,style=\"%s\"]\n", e->dest->tnode.tupid, n->tnode.tupid, (e->style == TUP_LINK_STICKY) ? "dotted" : "solid");
 			e = e->next;
 		}
 	}
@@ -536,12 +550,12 @@ static int touch(int argc, char **argv)
 		struct path_element *pel = NULL;
 		tupid_t dt;
 
-		if(fd_lstat(argv[x], &buf)) {
+		if(lstat(argv[x], &buf)) {
 			fd_t fd = FD_INITIALIZER;
 			fd_create(argv[x], O_WRONLY, 0666, &fd);
 			fd_close(fd);
 
-			if(fd_lstat(argv[x], &buf)) {
+			if(lstat(argv[x], &buf)) {
 				fprintf(stderr, "lstat: ");
 				perror(argv[x]);
 				return -1;
@@ -550,7 +564,7 @@ static int touch(int argc, char **argv)
 
 		dt = find_dir_tupid_dt(sub_dir_dt, argv[x], &pel, NULL, 0);
 		if(dt <= 0) {
-			fprintf(stderr, "Error finding dt for dir '%s' relative to dir %lli\n", argv[x], sub_dir_dt);
+			fprintf(stderr, "Error finding dt for dir '%s' relative to dir %"PRI_TUPID"\n", argv[x], sub_dir_dt);
 			return -1;
 		}
 		if(S_ISDIR(buf.st_mode)) {
@@ -592,11 +606,11 @@ static int node(int argc, char **argv)
 
 		dt = find_dir_tupid_dt(sub_dir_dt, argv[x], &pel, NULL, 0);
 		if(dt <= 0) {
-			fprintf(stderr, "Unable to find dir '%s' relative to %lli\n", argv[x], sub_dir_dt);
+			fprintf(stderr, "Unable to find dir '%s' relative to %"PRI_TUPID"\n", argv[x], sub_dir_dt);
 			return -1;
 		}
 		if(create_name_file(dt, pel->path, -1, NULL) < 0) {
-			fprintf(stderr, "Unable to create node for '%s' in dir %lli\n", pel->path, dt);
+			fprintf(stderr, "Unable to create node for '%s' in dir %"PRI_TUPID"\n", pel->path, dt);
 			return -1;
 		}
 		free(pel);
@@ -622,7 +636,7 @@ static int rm(int argc, char **argv)
 
 		dt = find_dir_tupid_dt(sub_dir_dt, argv[x], &pel, NULL, 0);
 		if(dt < 0) {
-			fprintf(stderr, "Unable to find dir '%s' relative to %lli\n", argv[x], sub_dir_dt);
+			fprintf(stderr, "Unable to find dir '%s' relative to %"PRI_TUPID"\n", argv[x], sub_dir_dt);
 			return -1;
 		}
 		if(tup_file_del(dt, pel->path, pel->len) < 0)
@@ -716,7 +730,7 @@ static int fake_mtime(int argc, char **argv)
 		return -1;
 	}
 	if(tup_db_select_tent_part(dt, pel->path, pel->len, &tent) < 0) {
-		fprintf(stderr, "Unable to find node '%.*s' in dir %lli\n", pel->len, pel->path, dt);
+		fprintf(stderr, "Unable to find node '%.*s' in dir %"PRI_TUPID"\n", pel->len, pel->path, dt);
 		return -1;
 	}
 	mtime = strtol(argv[2], NULL, 0);

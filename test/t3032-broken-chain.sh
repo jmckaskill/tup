@@ -11,7 +11,7 @@ cat > Tupfile << HERE
 
 srcs += foo.c
 srcs += bar.c
-: \$(srcs) |> *chain |> prog
+: \$(srcs) |> *chain |> prog.exe
 HERE
 echo 'int main(void) {return 0;}' > foo.c
 tup touch foo.c bar.c Tupfile

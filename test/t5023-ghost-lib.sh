@@ -7,6 +7,9 @@
 
 . ./tup.sh
 
+echo "[33mTODO windows t5024 - Fix weird errors from mingw[0m"
+unix_only
+
 tmkdir a
 tmkdir b
 
@@ -14,8 +17,8 @@ tmkdir b
 echo "void foo(void); int main(void) {foo(); return 0;}" > main.c
 cat > Tupfile << HERE
 : foreach *.c |> gcc -c %f -o %o |> %B.o
-: *.o | b/libfoo.a |> gcc %f -La -Lb -lfoo -o %o |> prog
-: prog |> ./%f > %o |> output.txt
+: *.o | b/libfoo.a |> gcc %f -La -Lb -lfoo -o %o |> prog.exe
+: prog.exe |> %f > %o |> output.txt
 HERE
 
 cat > b/foo.c << HERE
@@ -28,7 +31,7 @@ cat > b/Tupfile << HERE
 HERE
 tup touch main.c b/foo.c Tupfile b/Tupfile
 update
-echo libB | diff - output.txt
+echo libB | diff -b - output.txt
 
 # Now if we create a/libfoo.a, the update should fail because the rule in the
 # top-level Tupfile doesn't specify a/libfoo.a as a prerequisite. This is the
@@ -48,15 +51,15 @@ HERE
 tup touch a/foo.c a/Tupfile
 update_fail
 
-# Add the pre-requisite, and the update should succeed - the program should now
+# Add the pre-requisite, and the update should succeed - the prog.exeram should now
 # successfully be linked against a/libfoo.a
 cat > Tupfile << HERE
 : foreach *.c |> gcc -c %f -o %o |> %B.o
-: *.o | a/libfoo.a b/libfoo.a |> gcc %f -La -Lb -lfoo -o %o |> prog
-: prog |> ./%f > %o |> output.txt
+: *.o | a/libfoo.a b/libfoo.a |> gcc %f -La -Lb -lfoo -o %o |> prog.exe
+: prog.exe |> %f > %o |> output.txt
 HERE
 tup touch Tupfile
 update
-echo libA | diff - output.txt
+echo libA | diff -b - output.txt
 
 eotup

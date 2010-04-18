@@ -2,6 +2,7 @@
 
 # Like t5045, but with a symlink.
 . ./tup.sh
+unix_only
 
 tmkdir sub
 cat > sub/Tupfile << HERE

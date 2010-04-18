@@ -1,6 +1,8 @@
 #ifndef tup_container_h
 #define tup_container_h
 
+#include <stddef.h>
+
 /* Macros pulled out of list.h for re-use with rbtree */
 #ifdef offsetof
 #undef offsetof

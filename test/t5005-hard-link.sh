@@ -4,6 +4,7 @@ echo "[33mSkip t5005 - not needed?[0m"
 exit 0
 
 . ./tup.sh
+unix_only
 echo 'this is a file' > file1
 ln file1 file2
 cat > Makefile << HERE

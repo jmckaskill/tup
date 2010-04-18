@@ -4,6 +4,7 @@
 # node there, and properly update things if the file is later created.
 
 . ./tup.sh
+unix_only
 echo "#define FOO 3" > foo-x86.h
 ln -s foo-x86.h foo.h
 cat > Tupfile << HERE
@@ -11,7 +12,7 @@ cat > Tupfile << HERE
 HERE
 tup touch foo-x86.h foo.h
 update
-echo '#define FOO 3' | diff - output.txt
+echo '#define FOO 3' | diff -b - output.txt
 check_updates foo.h output.txt
 check_updates foo-x86.h output.txt
 
@@ -21,7 +22,7 @@ check_updates foo-x86.h output.txt
 ln -sf foo-ppc.h foo.h
 tup touch foo.h
 update
-echo 'nofile' | diff - output.txt
+echo 'nofile' | diff -b - output.txt
 
 # Now all we do is create the content at the symlink. The cat command should
 # already have a dependency on foo-ppc.h, so the update should end up copying
@@ -29,7 +30,7 @@ echo 'nofile' | diff - output.txt
 echo "#define FOO 4" > foo-ppc.h
 tup touch foo-ppc.h
 update
-echo '#define FOO 4' | diff - output.txt
+echo '#define FOO 4' | diff -b - output.txt
 check_updates foo.h output.txt
 check_no_updates foo-x86.h output.txt
 check_updates foo-ppc.h output.txt

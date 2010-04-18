@@ -3,10 +3,16 @@
 #define tup_fd_h
 
 #include <stdlib.h>
+#include <time.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#include <compat/win32/stat.h>
+#else
+#include <fcntl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <fcntl.h>
-#include <time.h>
+#endif
 
 #if 0
 #define TUP_HAVE_AT
@@ -21,19 +27,21 @@ typedef struct fdwrap fd_t;
 
 #if defined _WIN32
 union fdwrap_data {
-	HANDLE file;
-	struct buf dir;
+	HANDLE		file;
+	struct buf	dir;
 };
 struct fdwrap {
 	union fdwrap_data u;
 	unsigned int is_dir : 1;
 };
+#define FD_INITIALIZER {{INVALID_HANDLE_VALUE}, 0}
 
-struct stat {
-	int	st_mode;
-	time_t	st_mtime;
-	size_t	st_size;
-};
+
+/* GENERIC_* use the high bits */
+#define O_RDONLY GENERIC_READ
+#define O_RDWR   (GENERIC_READ | GENERIC_WRITE)
+#define O_WRONLY GENERIC_WRITE
+#define O_TRUNC  1
 
 #elif defined TUP_HAVE_AT
 struct fdwrap {
@@ -65,9 +73,8 @@ int     fd_readlinkat(fd_t dir, const char* name, char* buf, size_t bufsz);
 int     fd_unlinkat(fd_t dir, const char* name);
 int     fd_lstatat(fd_t dir, const char* name, struct stat* buf);
 int	fd_fstat(fd_t f, struct stat* buf);
-int	fd_lstat(const char* name, struct stat* buf);
 
-int     fd_socketpair(fd_t socks[2], int type);
+int	fd_pipe(fd_t socks[2]);
 
 /* Usable on sockets */
 int     fd_send(fd_t sock, const void* buf, size_t sz, int flags);

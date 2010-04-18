@@ -6,7 +6,7 @@
 . ./tup.sh
 tmkdir headers
 cat > headers/Tupfile << HERE
-: |> echo '#define FOO 3' > %o |> foo.h
+: |> echo #define FOO 3 > %o |> foo.h
 HERE
 cat > Tupfile << HERE
 : foreach *.c | headers/*.h |> gcc -c %f -o %o |> %B.o
@@ -24,8 +24,8 @@ rm foo.o
 
 # Adding a new sticky link shouldn't cause foo.o to be re-created.
 cat > headers/Tupfile << HERE
-: |> echo '#define FOO 3' > %o |> foo.h
-: |> echo '#define BAR 3' > %o |> bar.h
+: |> echo #define FOO 3 > %o |> foo.h
+: |> echo #define BAR 3 > %o |> bar.h
 HERE
 tup touch headers/Tupfile
 update --no-scan
@@ -36,7 +36,7 @@ tup_dep_exist headers bar.h . 'gcc -c foo.c -o foo.o'
 
 # Removing an unused sticky link shouldn't cause foo.o to be re-created.
 cat > headers/Tupfile << HERE
-: |> echo '#define FOO 3' > %o |> foo.h
+: |> echo #define FOO 3 > %o |> foo.h
 HERE
 tup touch headers/Tupfile
 update --no-scan
@@ -49,7 +49,8 @@ tup_dep_no_exist headers bar.h . 'gcc -c foo.c -o foo.o'
 cat > headers/Tupfile << HERE
 HERE
 tup touch headers/Tupfile
-update_fail_msg "headers/foo.h: No such file or directory"
+#update_fail_msg "headers/foo.h: No such file or directory"
+update_fail
 
 # Fix the C file and re-build
 echo '' > foo.c

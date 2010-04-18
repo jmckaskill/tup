@@ -6,6 +6,7 @@
 # files to use as input.
 
 . ./tup.sh
+unix_only
 
 tmkdir arch-x86
 cat > Tupfile << HERE

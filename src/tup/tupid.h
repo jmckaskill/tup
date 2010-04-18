@@ -6,7 +6,10 @@
 #include <inttypes.h>
 
 #include "sqlite3/sqlite3.h"
+#include <inttypes.h>
 
 typedef sqlite3_int64 tupid_t;
+#define PRI_TUPID PRId64
+
 
 #endif

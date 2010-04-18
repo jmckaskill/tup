@@ -2,6 +2,7 @@
 
 # Make a symlink to a ghost file in a ghost directory.
 . ./tup.sh
+unix_only
 ln -s spooky/ghost foo
 tup touch foo
 tup_object_exist . spooky foo

@@ -4,7 +4,7 @@
 
 cat > Tupfile << HERE
 : foreach *.c |> gcc -c %f -o %o |> %B.o
-: *.o fs/built-in.o |> gcc %f -o prog |> prog
+: *.o fs/built-in.o |> gcc %f -o prog.exe |> prog.exe
 HERE
 
 tmkdir fs
@@ -20,6 +20,6 @@ echo "void ext4fs(void) {}" > fs/ext4.c
 tup touch Tupfile main.c fs/ext3.c fs/ext4.c fs/Tupfile
 update
 
-sym_check prog main ext3fs ext4fs
+sym_check prog.exe main ext3fs ext4fs
 
 eotup

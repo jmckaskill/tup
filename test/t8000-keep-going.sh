@@ -15,10 +15,10 @@ tup touch bar.c foo.c zap.c
 update_fail
 
 check_exist bar.o
-check_not_exist foo.o zap.o prog
+check_not_exist foo.o zap.o prog.exe
 
 update_fail -k
 check_exist bar.o zap.o
-check_not_exist foo.o prog
+check_not_exist foo.o prog.exe
 
 eotup

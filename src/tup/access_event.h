@@ -1,6 +1,8 @@
 #ifndef tup_access_event_h
 #define tup_access_event_h
 
+#include "compat.h"
+
 /** The environment variable used to pass the name of the UNIX socket server
  * to subprocesses.
  */
@@ -11,6 +13,8 @@
 
 /** Lock to ensure synchronization with the ldpreload socket. */
 #define TUP_LOCK_NAME "tup_lock"
+
+#define TUP_SERVER_UDP_PORT "tup_master_udp_port"
 
 enum access_type {
 	ACCESS_READ,
@@ -41,5 +45,7 @@ struct access_event {
 	/** Length of the second path, for events that require two paths */
 	int len2;
 };
+
+#define ACCESS_EVENT_MAX_SIZE (PATH_MAX * 2 + sizeof(struct access_event))
 
 #endif

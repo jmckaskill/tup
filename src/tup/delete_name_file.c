@@ -4,8 +4,11 @@
 #include "entry.h"
 #include <stdio.h>
 #include <errno.h>
+
+#ifndef _WIN32
 #include <unistd.h>
 #include <fcntl.h>
+#endif
 
 int delete_name_file(tupid_t tupid)
 {

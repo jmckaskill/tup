@@ -9,7 +9,7 @@ tmkdir a
 cat > a/Tupfile << HERE
 include ../Tupfile.vars
 : foreach *.c |> \$(CC) -c %f -o %o \$(CCARGS) |> %B.o
-: *.o |> \$(CC) -o prog %f |> prog
+: *.o |> \$(CC) -o prog.exe %f |> prog
 HERE
 
 cat > Tupfile.vars << HERE
@@ -27,6 +27,6 @@ tup parse
 tup_object_exist a foo.c bar.c
 tup_object_exist a "gcc -c foo.c -o foo.o -DFOO=1 -DBAR=1"
 tup_object_exist a "gcc -c bar.c -o bar.o -DFOO=1 -DBAR=1"
-tup_object_exist a "gcc -o prog bar.o foo.o"
+tup_object_exist a "gcc -o prog.exe bar.o foo.o"
 
 eotup

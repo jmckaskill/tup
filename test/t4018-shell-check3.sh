@@ -6,6 +6,7 @@
 # command to now break if we didn't do this.
 
 . ./tup.sh
+unix_only
 cat > Tupfile << HERE
 : |> echo foo; false; echo bar |>
 HERE

@@ -3,6 +3,7 @@
 # Check support for mkstemp
 
 . ./tup.sh
+unix_only
 cat > ok.c << HERE
 #include <stdlib.h>
 

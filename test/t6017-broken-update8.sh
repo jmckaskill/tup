@@ -12,6 +12,7 @@
 # to mimic the getdents() syscall that javac and gcj appear to use.
 
 . ./tup.sh
+unix_only
 
 cat > Tupfile << HERE
 : B.java |> cat %f > %o |> B.class
@@ -22,8 +23,8 @@ echo "B" > B.java
 tup touch A.java B.java Tupfile
 update
 check_exist A.class B.class
-echo 'B' | diff - B.class
-(echo 'Using B.class'; echo 'B'; echo 'A') | diff - A.class
+echo 'B' | diff -b - B.class
+(echo 'Using B.class'; echo 'B'; echo 'A') | diff -b - A.class
 
 cat > Tupfile << HERE
 : B.java |> cat %f > %o |> B.o
@@ -33,7 +34,7 @@ tup touch Tupfile
 update
 check_not_exist A.class B.class
 check_exist A.o B.o
-echo 'B' | diff - B.o
-(echo 'Using B.java'; echo 'B'; echo 'A') | diff - A.o
+echo 'B' | diff -b - B.o
+(echo 'Using B.java'; echo 'B'; echo 'A') | diff -b - A.o
 
 eotup

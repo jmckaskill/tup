@@ -5,17 +5,18 @@
 # use in a rule.
 
 . ./tup.sh
+unix_only
 cat > ok.sh << HERE
 if [ -f ghost ]; then cat ghost; else echo nofile; fi
 HERE
 cat > Tupfile << HERE
-: |> ./ok.sh > %o |> output.txt
+: |> sh ok.sh > %o |> output.txt
 HERE
 chmod +x ok.sh
 ln -s ghost foo
 tup touch foo ok.sh Tupfile
 update
-echo nofile | diff output.txt -
+echo nofile | diff -b output.txt -
 
 rm -f foo
 tup rm foo
@@ -24,6 +25,6 @@ tup_object_exist . ghost
 echo 'alive' > ghost
 tup touch ghost
 update
-echo alive | diff output.txt -
+echo alive | diff -b output.txt -
 
 eotup

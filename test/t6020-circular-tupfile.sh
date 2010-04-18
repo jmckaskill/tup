@@ -6,7 +6,7 @@
 
 . ./tup.sh
 cat > Tupfile << HERE
-: foo/*.o |> gcc %f -o %o |> prog
+: foo/*.o |> gcc %f -o %o |> prog.exe
 HERE
 
 tmkdir foo

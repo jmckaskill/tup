@@ -4,6 +4,7 @@
 # a symlink.
 
 . ./tup.sh
+unix_only
 
 mkdir foo
 ln -s foo boo

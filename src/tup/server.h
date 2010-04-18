@@ -13,17 +13,24 @@
 #include <sys/un.h>
 #endif
 
+#ifdef _WIN32
+typedef uintptr_t socket_t;
+#else
+typedef int socket_t;
+#define closesocket(x) close(x)
+#define INVALID_SOCKET -1
+#endif
+
 struct server {
-	fd_t sd[2];
+	socket_t sd[2];
 	fd_t lockfd;
 	pthread_t tid;
 	struct file_info finfo;
-	char file1[PATH_MAX];
-	char file2[PATH_MAX];
+	uint16_t udp_port;
 };
 
 int server_init(void);
-void server_setenv(struct server *s, fd_t vardict_fd);
+void server_setenv(struct server *s);
 int start_server(struct server *s);
 int stop_server(struct server *s);
 

@@ -6,6 +6,8 @@ const char *tup_platform = "linux";
 const char *tup_platform = "solaris";
 #elif __APPLE__
 const char *tup_platform = "macosx";
+#elif _WIN32
+const char *tup_platform = "windows";
 #else
 #error Unsupported platform. Please add support in tup/platform.c
 #endif

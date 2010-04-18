@@ -7,20 +7,20 @@ cat > ok.sh << HERE
 if [ -f ghost ]; then cat ghost; else echo nofile; fi
 HERE
 cat > Tupfile << HERE
-: |> ./ok.sh > %o |> output.txt
+: |> sh ok.sh > %o |> output.txt
 HERE
 chmod +x ok.sh
 tup touch ok.sh Tupfile
 update
-echo nofile | diff output.txt -
+echo nofile | diff -b output.txt -
 
 cat > Tupfile << HERE
 : |> echo alive > %o |> ghost
-: ghost |> ./ok.sh > %o |> output.txt
+: ghost |> sh ok.sh > %o |> output.txt
 HERE
 
 tup touch Tupfile
 update
-echo alive | diff output.txt -
+echo alive | diff -b output.txt -
 
 eotup

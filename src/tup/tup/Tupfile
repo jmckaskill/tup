@@ -1,3 +1,2 @@
 include_rules
-CFLAGS += -ansi -pedantic
 : foreach *.c |> !cc |> %B.o

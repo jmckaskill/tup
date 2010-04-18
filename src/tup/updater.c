@@ -15,15 +15,22 @@
 #include "monitor.h"
 #include "path.h"
 #include "colors.h"
+#include "getexecwd.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 #include <ctype.h>
+
+#ifdef _WIN32
+#include "ldpreload/dllinject.h"
+#include <compat/win32/misc.h>
+#else
 #include <pthread.h>
 #include <sys/wait.h>
 #include <sys/socket.h>
 #include <sys/time.h>
+#endif
 
 #define MAX_JOBS 65535
 
@@ -42,9 +49,8 @@ static void *update_work(void *arg);
 static void *todo_work(void *arg);
 static int update(struct node *n, struct server *s);
 static int var_replace(struct node *n);
-static void sighandler(int sig);
 static void tup_main_progress(const char *s);
-static void show_progress(int sum, int tot, struct node *n);
+static void show_progress(int sum, int toXt, struct node *n);
 
 static int do_keep_going;
 static int num_jobs;
@@ -73,10 +79,15 @@ static const char *signal_err[] = {
 	"Timer signal from alarm(2)",
 	"Termination signal", /* 15 */
 };
+#endif
+
+static pthread_mutex_t db_mutex;
 
 struct worker_thread {
 	pthread_t pid;
-	fd_t sock;       /* 1 sock and no shoes? What a life... */
+	pthread_mutex_t* pipe_lock;
+	fd_t read;
+	fd_t write;
 	fd_t lockfd;     /* lock fd for .tup/jobXXXX/.tuplock */
 	struct graph *g; /* This should only be used in create_work() and todo_work */
 };
@@ -90,6 +101,8 @@ int updater(int argc, char **argv, int phase)
 {
 	int x;
 	int do_scan = 1;
+
+	pthread_mutex_init(&db_mutex, NULL);
 
 	do_keep_going = tup_db_config_get_int("keep_going");
 	num_jobs = tup_db_config_get_int("num_jobs");
@@ -130,6 +143,7 @@ int updater(int argc, char **argv, int phase)
 			printf("%.3fs\n",
 			       (double)(t2.tv_sec - t1.tv_sec) +
 			       (double)(t2.tv_usec - t1.tv_usec)/1e6);
+			fflush(stdout);
 		} else {
 			/* tup_scan would normally add the @-directory to the
 			 * entry tree, so if that doesn't run we add it here.
@@ -273,7 +287,7 @@ static int process_create_nodes(void)
 
 	if(create_graph(&g, TUP_NODE_DIR) < 0)
 		return -1;
-	if(tup_db_select_node_by_flags(add_file_cb, &g, TUP_FLAGS_CREATE) < 0)
+	if(tup_db_select_node_by_flags(&add_file_cb, &g, TUP_FLAGS_CREATE) < 0)
 		return -1;
 	if(build_graph(&g) < 0)
 		return -1;
@@ -284,7 +298,7 @@ static int process_create_nodes(void)
 	}
 	tup_db_begin();
 	/* create_work must always use only 1 thread since no locking is done */
-	rc = execute_graph(&g, 0, 1, create_work);
+	rc = execute_graph(&g, 0, 1, &create_work);
 	if(rc == 0)
 		rc = delete_files(&g);
 	if(rc == 0) {
@@ -327,6 +341,8 @@ static int process_update_nodes(void)
 	sigemptyset(&sigact.sa_mask);
 	sigaction(SIGINT, &sigact, NULL);
 	sigaction(SIGTERM, &sigact, NULL);
+#endif
+
 	tup_db_begin();
 
 	if (fd_openat(tup_top_fd(), TUP_VARDICT_FILE, O_RDONLY, &vardict_fd)) {
@@ -430,18 +446,18 @@ static int build_graph(struct graph *g)
 	while(!list_empty(&g->plist)) {
 		cur = list_entry(g->plist.next, struct node, list);
 		if(cur->state == STATE_INITIALIZED) {
-			DEBUGP("find deps for node: %lli\n", cur->tnode.tupid);
+			DEBUGP("find deps for node: %"PRI_TUPID"\n", cur->tnode.tupid);
 			g->cur = cur;
 			if(tup_db_select_node_by_link(add_file_cb, g, cur->tnode.tupid) < 0)
 				return -1;
 			cur->state = STATE_PROCESSING;
 		} else if(cur->state == STATE_PROCESSING) {
-			DEBUGP("remove node from stack: %lli\n", cur->tnode.tupid);
+			DEBUGP("remove node from stack: %"PRI_TUPID"\n", cur->tnode.tupid);
 			list_del(&cur->list);
 			list_add_tail(&cur->list, &g->node_list);
 			cur->state = STATE_FINISHED;
 		} else if(cur->state == STATE_FINISHED) {
-			fprintf(stderr, "tup internal error: STATE_FINISHED node %lli in plist\n", cur->tnode.tupid);
+			fprintf(stderr, "tup internal error: STATE_FINISHED node %"PRI_TUPID" in plist\n", cur->tnode.tupid);
 			tup_db_print(stderr, cur->tnode.tupid);
 			return -1;
 		}
@@ -468,7 +484,7 @@ edge_create:
 		 * but it is easy to check before going through the graph.
 		 */
 		fprintf(stderr, "Error: Circular dependency detected! "
-			"Last edge was: %lli -> %lli\n",
+			"Last edge was: %"PRI_TUPID" -> %"PRI_TUPID"\n",
 			g->cur->tnode.tupid, tent->tnode.tupid);
 		return -1;
 	}
@@ -512,14 +528,18 @@ static int execute_graph(struct graph *g, int keep_going, int jobs,
 	struct node *root;
 	struct worker_thread *workers;
 	int num_processed = 0;
-	fd_t socks[2];
+	fd_t to_worker[2];
+	fd_t from_worker[2];
 	int rc = -1;
 	int x;
 	int active = 0;
 	fd_t tupfd;
+	pthread_mutex_t pipe_lock;
 
-	if(fd_socketpair(socks, SOCK_DGRAM) < 0) {
-		perror("socketpair");
+	pthread_mutex_init(&pipe_lock, NULL);
+
+	if(fd_pipe(to_worker) < 0 || fd_pipe(from_worker) < 0) {
+		perror("pipe");
 		return -2;
 	}
 
@@ -536,7 +556,9 @@ static int execute_graph(struct graph *g, int keep_going, int jobs,
 	for(x=0; x<jobs; x++) {
 		char lockname[] = "jobXXXX/.tuplock";
 		workers[x].g = g;
-		workers[x].sock = socks[1];
+		workers[x].read = to_worker[0];
+		workers[x].write = from_worker[1];
+		workers[x].pipe_lock = &pipe_lock;
 		snprintf(lockname+3, 5, "%04x", x);
 		lockname[7] = 0;
 		if(fd_mkdirat(tupfd, lockname, 0777) < 0) {
@@ -558,7 +580,7 @@ static int execute_graph(struct graph *g, int keep_going, int jobs,
 	fd_close(tupfd);
 
 	root = list_entry(g->node_list.next, struct node, list);
-	DEBUGP("root node: %lli\n", root->tnode.tupid);
+	DEBUGP("root node: %"PRI_TUPID"\n", root->tnode.tupid);
 	list_del(&root->list);
 	pop_node(g, root);
 	remove_node(g, root);
@@ -566,7 +588,7 @@ static int execute_graph(struct graph *g, int keep_going, int jobs,
 	while(!list_empty(&g->plist) && !sig_quit) {
 		struct node *n;
 		n = list_entry(g->plist.next, struct node, list);
-		DEBUGP("cur node: %lli [%i]\n", n->tnode.tupid, n->incoming_count);
+		DEBUGP("cur node: %"PRI_TUPID" [%i]\n", n->tnode.tupid, n->incoming_count);
 		if(n->incoming_count) {
 			/* Here STATE_FINISHED means we're on the node_list,
 			 * therefore not ready for processing.
@@ -589,7 +611,7 @@ static int execute_graph(struct graph *g, int keep_going, int jobs,
 		}
 		list_del(&n->list);
 		active++;
-		if(fd_send(socks[0], &n, sizeof(n), 0) != sizeof(n)) {
+		if(fd_send(to_worker[1], &n, sizeof(n), 0) != sizeof(n)) {
 			perror("send");
 			return -2;
 		}
@@ -607,7 +629,7 @@ check_empties:
 
 			/* recv() might get EINTR if we ctrl-c or kill tup */
 			do {
-				ret = fd_recv(socks[0], &wrc, sizeof(wrc), 0);
+				ret = fd_recv(from_worker[0], &wrc, sizeof(wrc), 0);
 				if(ret == sizeof(wrc))
 					break;
 				if(ret < 0 && errno != EINTR) {
@@ -655,15 +677,18 @@ keep_going:
 out:
 	for(x=0; x<jobs; x++) {
 		struct node *n = NULL;
-		fd_send(socks[0], &n, sizeof(n), 0);
+		fd_send(to_worker[1], &n, sizeof(n), 0);
 	}
 	for(x=0; x<jobs; x++) {
 		pthread_join(workers[x].pid, NULL);
 		fd_close(workers[x].lockfd);
 	}
 	free(workers); /* Viva la revolucion! */
-	fd_close(socks[0]);
-	fd_close(socks[1]);
+	pthread_mutex_destroy(&pipe_lock, NULL);
+	fd_close(from_worker[0]);
+	fd_close(from_worker[1]);
+	fd_close(to_worker[0]);
+	fd_close(to_worker[1]);
 	return rc;
 }
 
@@ -673,16 +698,20 @@ static void *create_work(void *arg)
 	struct graph *g = wt->g;
 	struct node *n;
 
-	while(fd_recv(wt->sock, &n, sizeof(n), 0) == sizeof(n)) {
+	for (;;) {
 		struct work_rc wrc;
 		int rc = 0;
 
-		if(n == NULL)
+		pthread_mutex_lock(wt->pipe_lock);
+		rc = fd_recv(wt->read, &n, sizeof(n), 0);
+		pthread_mutex_unlock(wt->pipe_lock);
+
+		if(rc != sizeof(n) || n == NULL)
 			break;
 
 		if(n->tent->type == TUP_NODE_DIR) {
 			if(n->already_used) {
-				printf("Already parsed[%lli]: '%s'\n", n->tnode.tupid, n->tent->name.s);
+				printf("Already parsed[%"PRI_TUPID"]: '%s'\n", n->tnode.tupid, n->tent->name.s);
 				rc = 0;
 			} else {
 				rc = parse(n, g);
@@ -693,7 +722,7 @@ static void *create_work(void *arg)
 			  n->tent->type == TUP_NODE_CMD) {
 			rc = 0;
 		} else {
-			fprintf(stderr, "Error: Unknown node type %i with ID %lli named '%s' in create graph.\n", n->tent->type, n->tnode.tupid, n->tent->name.s);
+			fprintf(stderr, "Error: Unknown node type %i with ID %"PRI_TUPID" named '%s' in create graph.\n", n->tent->type, n->tnode.tupid, n->tent->name.s);
 			rc = -1;
 		}
 		if(tup_db_unflag_create(n->tnode.tupid) < 0)
@@ -701,7 +730,12 @@ static void *create_work(void *arg)
 
 		wrc.rc = rc;
 		wrc.n = n;
-		if(fd_send(wt->sock, &wrc, sizeof(wrc), 0) != sizeof(wrc)) {
+
+		pthread_mutex_lock(wt->pipe_lock);
+		rc = fd_send(wt->write, &wrc, sizeof(wrc), 0);
+		pthread_mutex_unlock(wt->pipe_lock);
+
+		if (rc != sizeof(wrc)) {
 			perror("write");
 			return NULL;
 		}
@@ -722,12 +756,16 @@ static void *update_work(void *arg)
 	}
 	s->lockfd = wt->lockfd;
 
-	while(fd_recv(wt->sock, &n, sizeof(n), 0) == sizeof(n)) {
+	for (;;) {
 		struct edge *e;
 		int rc = 0;
 		struct work_rc wrc;
 
-		if(n == NULL)
+		pthread_mutex_lock(wt->pipe_lock);
+		rc = fd_recv(wt->read, &n, sizeof(n), 0);
+		pthread_mutex_unlock(wt->pipe_lock);
+
+		if(rc != sizeof(n) || n == NULL)
 			break;
 
 		if(n->tent->type == TUP_NODE_CMD) {
@@ -775,9 +813,14 @@ static void *update_work(void *arg)
 
 		wrc.rc = rc;
 		wrc.n = n;
-		if(fd_send(wt->sock, &wrc, sizeof(wrc), 0) != sizeof(wrc)) {
+
+		pthread_mutex_lock(wt->pipe_lock);
+		rc = fd_send(wt->write, &wrc, sizeof(wrc), 0);
+		pthread_mutex_unlock(wt->pipe_lock);
+
+		if (rc != sizeof(wrc)) {
 			perror("write");
-			break;
+			return NULL;
 		}
 	}
 	free(s);
@@ -790,10 +833,15 @@ static void *todo_work(void *arg)
 	struct graph *g = wt->g;
 	struct node *n;
 
-	while(fd_recv(wt->sock, &n, sizeof(n), 0) == sizeof(n)) {
+	for (;;) {
 		struct work_rc wrc;
+		int rc;
 
-		if(n == NULL)
+		pthread_mutex_lock(wt->pipe_lock);
+		rc = fd_recv(wt->read, &n, sizeof(n), 0);
+		pthread_mutex_unlock(wt->pipe_lock);
+
+		if(rc != sizeof(n) || n == NULL)
 			break;
 
 		if(n->tent->type == g->count_flags)
@@ -801,7 +849,12 @@ static void *todo_work(void *arg)
 
 		wrc.rc = 0;
 		wrc.n = n;
-		if(fd_send(wt->sock, &wrc, sizeof(wrc), 0) != sizeof(wrc)) {
+
+		pthread_mutex_lock(wt->pipe_lock);
+		rc = fd_send(wt->write, &wrc, sizeof(wrc), 0);
+		pthread_mutex_unlock(wt->pipe_lock);
+
+		if (rc != sizeof(wrc)) {
 			perror("write");
 			return NULL;
 		}
@@ -827,10 +880,90 @@ static int unlink_outputs(fd_t dfd, struct node *n)
 }
 
 #ifdef _WIN32
+#define CMDSTR "CMD.EXE /Q /C "
+//#define CMDSTR ""
+//#define CMDSTR "sh -c "
+//#define CMDSTR "C:\\SCM\\tup\\test2\\stracent.exe "
 static int run(struct node* n, struct server* s, const char* name, fd_t dfd)
 {
-	/* TODO */
-	return -1;
+	DWORD return_code = 0xBEEF;
+	BOOL ret;
+	PROCESS_INFORMATION pi;
+	STARTUPINFOA sa;
+	size_t namesz = strlen(name);
+	size_t cmdsz = sizeof(CMDSTR) - 1;
+	char* cmdline = (char*) alloca(namesz + cmdsz + 1 + 1);
+
+	cmdline[0] = '\0';
+	strcat(cmdline, CMDSTR);
+	strcat(cmdline, name);
+
+	memset(&sa, 0, sizeof(sa));
+	sa.cb = sizeof(STARTUPINFOW);
+
+	pi.hProcess = INVALID_HANDLE_VALUE;
+	pi.hThread = INVALID_HANDLE_VALUE;
+
+	ret = CreateProcessA(
+		NULL,
+		cmdline,
+		NULL,
+		NULL,
+		FALSE,
+		CREATE_SUSPENDED,
+		NULL,
+		dfd.u.dir.s,
+		&sa,
+		&pi);
+
+	if (!ret) {
+		fprintf(stderr, "CreateProcess failed %d\n", GetLastError());
+		goto end;
+	}
+
+	if (tup_inject_dll(&pi, s->udp_port)) {
+		fprintf(stderr, "Failed to inject dll %d\n", GetLastError());
+		goto end;
+	}
+
+	if (ResumeThread(pi.hThread) == (DWORD)~0) {
+		fprintf(stderr, "ResumeThread failed %d\n", GetLastError());
+		goto end;
+	}
+
+	if (WaitForSingleObject(pi.hThread, INFINITE) != WAIT_OBJECT_0) {
+		fprintf(stderr, "WFSO thread failed %d\n", GetLastError());
+		goto end;
+	}
+
+	if (WaitForSingleObject(pi.hProcess, INFINITE) != WAIT_OBJECT_0) {
+		fprintf(stderr, "WFSO process failed %d\n", GetLastError());
+		goto end;
+	}
+
+	if (!GetExitCodeProcess(pi.hProcess, &return_code)) {
+		fprintf(stderr, "Failed to get exit code %d\n", GetLastError());
+		goto end;
+	}
+
+	return_code = 0;
+
+end:
+	CloseHandle(pi.hThread);
+	CloseHandle(pi.hProcess);
+	if (return_code == 0) {
+		int rc;
+		pthread_mutex_lock(&db_mutex);
+		rc = write_files(n->tnode.tupid, n->tent->dt, dfd, name, &s->finfo, &warnings);
+		pthread_mutex_unlock(&db_mutex);
+		if (rc < 0) {
+			return -1;
+		}
+
+		return 0;
+	} else {
+		return return_code;
+	}
 }
 
 #else
@@ -846,11 +979,10 @@ static int run(struct node* n, struct server* s, const char* name, fd_t dfd)
 
 	if(pid == 0) {
 		/* Child */
-		struct sigaction sa;
-
-		memset(&sa, 0, sizeof(sa));
-	        sa.sa_handler = SIG_IGN;
-		sa.sa_flags = SA_RESETHAND | SA_RESTART;
+		struct sigaction sa = {
+			.sa_handler = SIG_IGN,
+			.sa_flags = SA_RESETHAND | SA_RESTART,
+		};
 
 		tup_lock_close();
 		sigemptyset(&sa.sa_mask);
@@ -903,15 +1035,13 @@ static int run(struct node* n, struct server* s, const char* name, fd_t dfd)
 
 static int update(struct node *n, struct server *s)
 {
-	int status;
-	int pid;
 	fd_t dfd;
-	int exit_status = -1;
+	int exit_status;
 	const char *name = n->tent->name.s;
-	int rc;
 
 	/* Commands that begin with a ',' are special var/sed commands */
 	if(name[0] == ',') {
+		int rc;
 		pthread_mutex_lock(&db_mutex);
 		rc = var_replace(n);
 		pthread_mutex_unlock(&db_mutex);
@@ -930,7 +1060,7 @@ static int update(struct node *n, struct server *s)
 		}
 		while(*name && *name != '^') name++;
 		if(!*name) {
-			fprintf(stderr, "Error: Missing ending '^' flag in command %lli: %s\n", n->tnode.tupid, n->tent->name.s);
+			fprintf(stderr, "Error: Missing ending '^' flag in command %"PRI_TUPID": %s\n", n->tnode.tupid, n->tent->name.s);
 			return -1;
 		}
 		name++;
@@ -950,70 +1080,24 @@ static int update(struct node *n, struct server *s)
 		fprintf(stderr, "Error starting update server.\n");
 		goto err_close_dfd;
 	}
-	pid = fork();
-	if(pid < 0) {
-		perror("fork");
+
+	exit_status = run(n, s, name, dfd);
+
+	if(exit_status == -1) {
+		fprintf(stderr, " *** Command %"PRI_TUPID" failed: %s\n", n->tnode.tupid, name);
+		goto err_close_dfd;
+	} else if (exit_status != 0) {
+		fprintf(stderr, " *** Command %"PRI_TUPID" failed with return value %i: %s\n", n->tnode.tupid, exit_status, name);
 		goto err_close_dfd;
 	}
-	if(pid == 0) {
-		struct sigaction sa = {
-			.sa_handler = SIG_IGN,
-			.sa_flags = SA_RESETHAND | SA_RESTART,
-		};
 
-		tup_lock_close();
-		sigemptyset(&sa.sa_mask);
-		sigaction(SIGINT, &sa, NULL);
-		sigaction(SIGTERM, &sa, NULL);
-		if(fd_chdir(dfd) < 0) {
-			perror("fchdir");
-			exit(1);
-		}
-		server_setenv(s, vardict_fd);
-		execl("/bin/sh", "/bin/sh", "-e", "-c", name, NULL);
-		perror("execl");
-		exit(1);
-	}
-	if(waitpid(pid, &status, 0) < 0) {
-		perror("waitpid");
-		goto err_cmd_failed;
-	}
 	if(stop_server(s) < 0) {
-		goto err_cmd_failed;
-	}
-
-	if(WIFEXITED(status)) {
-		if(WEXITSTATUS(status) == 0) {
-			pthread_mutex_lock(&db_mutex);
-			rc = write_files(n->tnode.tupid, n->tent->dt, dfd, name, &s->finfo, &warnings);
-			pthread_mutex_unlock(&db_mutex);
-			if(rc < 0)
-				goto err_cmd_failed;
-		} else {
-			exit_status = WEXITSTATUS(status);
-			goto err_cmd_failed;
-		}
-	} else if(WIFSIGNALED(status)) {
-		int sig = WTERMSIG(status);
-		const char *errmsg = "Unknown signal";
-
-		if(sig >= 0 && sig < ARRAY_SIZE(signal_err) && signal_err[sig])
-			errmsg = signal_err[sig];
-		fprintf(stderr, " *** Killed by signal %i (%s)\n", sig, errmsg);
-		goto err_cmd_failed;
-	} else {
-		fprintf(stderr, "tup error: Expected exit status to be WIFEXITED or WIFSIGNALED. Got: %i\n", status);
-		goto err_cmd_failed;
+		goto err_close_dfd;
 	}
 
 	fd_close(dfd);
-	return rc;
+	return 0;
 
-err_cmd_failed:
-	if(exit_status == -1)
-		fprintf(stderr, " *** Command %lli failed: %s\n", n->tnode.tupid, name);
-	else
-		fprintf(stderr, " *** Command %lli failed with return value %i: %s\n", n->tnode.tupid, exit_status, name);
 err_close_dfd:
 	fd_close(dfd);
 err_out:
@@ -1143,6 +1227,7 @@ err_close_dfd:
 	return rc;
 }
 
+#ifndef _WIN32
 static void sighandler(int sig)
 {
 	if(sig) {/* unused */}
@@ -1165,6 +1250,7 @@ static void sighandler(int sig)
 		 */
 	}
 }
+#endif
 
 static void tup_main_progress(const char *s)
 {
