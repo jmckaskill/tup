@@ -1,4 +1,5 @@
 /* vim: set ts=8 sw=8 sts=8 noet tw=78: */
+#define _GNU_SOURCE
 #include "updater.h"
 #include "graph.h"
 #include "fileio.h"
@@ -51,13 +52,9 @@ static fd_t vardict_fd;
 static int warnings;
 
 static int sig_quit = 0;
-static struct sigaction sigact = {
-	.sa_handler = sighandler,
-	.sa_flags = SA_RESTART,
-};
 
-static pthread_mutex_t db_mutex = PTHREAD_MUTEX_INITIALIZER;
-
+#ifndef _WIN32
+static void sighandler(int sig);
 static const char *signal_err[] = {
 	NULL, /* 0 */
 	"Hangup detected on controlling terminal or death of controlling process",
@@ -308,6 +305,9 @@ static int process_update_nodes(void)
 {
 	struct graph g;
 	int rc;
+#ifndef _WIN32
+	struct sigaction sigact;
+#endif
 
 	if(create_graph(&g, TUP_NODE_CMD) < 0)
 		return -1;
@@ -320,6 +320,10 @@ static int process_update_nodes(void)
 	} else {
 		tup_main_progress("No commands to execute.\n");
 	}
+
+#ifndef _WIN32
+	sigact.sa_handler = &sighandler;
+	sigact.sa_flags = SA_RESTART;
 	sigemptyset(&sigact.sa_mask);
 	sigaction(SIGINT, &sigact, NULL);
 	sigaction(SIGTERM, &sigact, NULL);
@@ -635,12 +639,12 @@ keep_going:
 				struct node *n;
 				fprintf(stderr, "fatal tup error: Graph is not empty after execution. This likely indicates a circular dependency.\n");
 				fprintf(stderr, "Node list:\n");
-				list_for_each_entry(n, &g->node_list, list) {
-					fprintf(stderr, " Node[%lli]: %s\n", n->tnode.tupid, n->tent->name.s);
+				list_for_each_entry(struct node, n, &g->node_list, list) {
+					fprintf(stderr, " Node[%"PRI_TUPID"]: %s\n", n->tnode.tupid, n->tent->name.s);
 				}
 				fprintf(stderr, "plist:\n");
-				list_for_each_entry(n, &g->plist, list) {
-					fprintf(stderr, " Plist[%lli]: %s\n", n->tnode.tupid, n->tent->name.s);
+				list_for_each_entry(struct node, n, &g->plist, list) {
+					fprintf(stderr, " Plist[%"PRI_TUPID"]: %s\n", n->tnode.tupid, n->tent->name.s);
 				}
 			}
 		}
@@ -821,6 +825,81 @@ static int unlink_outputs(fd_t dfd, struct node *n)
 	}
 	return 0;
 }
+
+#ifdef _WIN32
+static int run(struct node* n, struct server* s, const char* name, fd_t dfd)
+{
+	/* TODO */
+	return -1;
+}
+
+#else
+static int run(struct node* n, struct server* s, const char* name, fd_t dfd)
+{
+	int pid = fork();
+	int status;
+
+	if(pid < 0) {
+		perror("fork");
+		return -1;
+	}
+
+	if(pid == 0) {
+		/* Child */
+		struct sigaction sa;
+
+		memset(&sa, 0, sizeof(sa));
+	        sa.sa_handler = SIG_IGN;
+		sa.sa_flags = SA_RESETHAND | SA_RESTART;
+
+		tup_lock_close();
+		sigemptyset(&sa.sa_mask);
+		sigaction(SIGINT, &sa, NULL);
+		sigaction(SIGTERM, &sa, NULL);
+		if(fd_chdir(dfd) < 0) {
+			perror("fchdir");
+			exit(1);
+		}
+		server_setenv(s, vardict_fd);
+		execl("/bin/sh", "/bin/sh", "-e", "-c", name, NULL);
+		perror("execl");
+		exit(1);
+	}
+
+	if(waitpid(pid, &status, 0) < 0) {
+		perror("waitpid");
+		return -1;
+	}
+
+	if(WIFEXITED(status)) {
+		if(WEXITSTATUS(status) == 0) {
+			int rc;
+			pthread_mutex_lock(&db_mutex);
+			rc = write_files(n->tnode.tupid, n->tent->dt, dfd, name, &s->finfo, &warnings);
+			pthread_mutex_unlock(&db_mutex);
+			if(rc < 0) {
+				return -1;
+			}
+
+			return 0;
+		} else {
+			return WEXITSTATUS(status);
+		}
+	} else if(WIFSIGNALED(status)) {
+		int sig = WTERMSIG(status);
+		const char *errmsg = "Unknown signal";
+
+		if(sig >= 0 && sig < ARRAY_SIZE(signal_err) && signal_err[sig])
+			errmsg = signal_err[sig];
+		fprintf(stderr, " *** Killed by signal %i (%s)\n", sig, errmsg);
+		return -1;
+	} else {
+		fprintf(stderr, "tup error: Expected exit status to be WIFEXITED or WIFSIGNALED. Got: %i\n", status);
+		return -1;
+	}
+}
+
+#endif
 
 static int update(struct node *n, struct server *s)
 {

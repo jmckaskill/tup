@@ -1,6 +1,7 @@
 /* vim: set ts=8 sw=8 sts=8 noet tw=78: */
 #include "db.h"
 #include "db_util.h"
+#include "compat.h"
 #include "array_size.h"
 #include "linux/list.h"
 #include "tupid_tree.h"
@@ -103,7 +104,7 @@ struct half_entry {
 
 static sqlite3 *tup_db = NULL;
 static sqlite3_stmt *stmts[DB_NUM_STATEMENTS];
-static LIST_HEAD(ghost_list);
+static struct list_head ghost_list = LIST_HEAD_INIT(ghost_list);
 static int tup_db_var_changed = 0;
 static int sql_debug = 0;
 static int reclaim_ghost_debug = 0;
@@ -299,7 +300,15 @@ static int version_check(void)
 			}
 			if(tup_db_config_set_int("db_version", 2) < 0)
 				return -1;
-			fprintf(stderr, "WARNING: Tup database updated to version 2.\nThe link table has a new column (style) to annotate the origin of the link. This is used to differentiate between links specified in Tupfiles vs. links determined automatically via wrapped command execution, so the links can be removed at appropriate times. Also, a new node type (TUP_NODE_GENERATED==4) has been added. All files created from commands have been updated to this new type. This is used so you can't try to create a command to write to a base source file. All Tupfiles will be re-parsed on the next update in order to generate the new links. If you have any problems, it might be easiest to re-checkout your code and start anew. Admittedly I haven't tested the conversion completely.\n");
+			fprintf(stderr, "WARNING: Tup database updated to version 2.\n");
+			fprintf(stderr, " The link table has a new column (style) to annotate the origin of the link."); 
+			fprintf(stderr, " This is used to differentiate between links specified in Tupfiles vs. links determined automatically via wrapped command execution, so the links can be removed at appropriate times.");
+			fprintf(stderr, " Also, a new node type (TUP_NODE_GENERATED==4) has been added.");
+			fprintf(stderr, " All files created from commands have been updated to this new type.");
+			fprintf(stderr, " This is used so you can't try to create a command to write to a base source file.");
+			fprintf(stderr, " All Tupfiles will be re-parsed on the next update in order to generate the new links.");
+			fprintf(stderr, " If you have any problems, it might be easiest to re-checkout your code and start anew.");
+			fprintf(stderr, " Admittedly I haven't tested the conversion completely.\n");
 
 			fprintf(stderr, "NOTE: If you are using the file monitor, you probably want to restart it.\n");
 		case 2:
@@ -1059,7 +1068,9 @@ int delete_node(tupid_t tupid)
 
 int tup_db_delete_dir(tupid_t dt)
 {
-	LIST_HEAD(subdir_list);
+	struct list_head subdir_list;
+
+	INIT_LIST_HEAD(&subdir_list);
 
 	if(get_dir_entries(dt, &subdir_list) < 0)
 		return -1;
@@ -1079,7 +1090,9 @@ int tup_db_delete_dir(tupid_t dt)
 static int recurse_delete_ghost_tree(tupid_t tupid, struct list_head *list)
 {
 	struct half_entry *he;
-	LIST_HEAD(subdir_list);
+	struct list_head subdir_list;
+
+	INIT_LIST_HEAD(&subdir_list);
 
 	if(get_dir_entries(tupid, &subdir_list) < 0)
 		return -1;
@@ -1103,7 +1116,7 @@ static int recurse_delete_ghost_tree(tupid_t tupid, struct list_head *list)
 	if(tup_db_delete_links(tupid) < 0)
 		return -1;
 
-	list_for_each_entry(he, &subdir_list, list) {
+	list_for_each_entry(struct half_entry, he, &subdir_list, list) {
 		if(he->type != TUP_NODE_GHOST) {
 			fprintf(stderr, "tup internal error: Why does a node of type %i have a ghost dir?\n", he->type);
 			tup_db_print(stderr, he->tupid);
@@ -1120,10 +1133,12 @@ static int recurse_delete_ghost_tree(tupid_t tupid, struct list_head *list)
 
 int tup_db_modify_dir(tupid_t dt)
 {
-	LIST_HEAD(subdir_list);
+	struct list_head subdir_list;
 	int rc;
 	sqlite3_stmt **stmt = &stmts[DB_MODIFY_DIR];
 	static char s[] = "insert or ignore into modify_list select id from node where dir=? and type!=?";
+
+	INIT_LIST_HEAD(&subdir_list);
 
 	if(tup_db_add_create_list(dt) < 0)
 		return -1;
@@ -1305,7 +1320,9 @@ int tup_db_change_node(tupid_t tupid, const char *new_name, tupid_t new_dt)
 	struct tup_entry *tent;
 	sqlite3_stmt **stmt = &stmts[DB_CHANGE_NODE_NAME];
 	static char s[] = "update node set name=?, dir=? where id=?";
-	LIST_HEAD(tmp_ghost_list);
+	struct list_head tmp_ghost_list;
+
+	INIT_LIST_HEAD(&tmp_ghost_list);
 
 	if(node_select(new_dt, new_name, -1, &tent) < 0) {
 		return -1;
@@ -3624,7 +3641,7 @@ static int compare_list_tree(struct list_head *a, struct rb_root *b, void *data,
 
 	nb = rb_first(b);
 
-	list_for_each_entry(tent, a, list) {
+	list_for_each_entry(struct tup_entry, tent, a, list) {
 		ttb = tupid_tree_search(b, tent->tnode.tupid);
 		if(!ttb) {
 			if(extra_a && extra_a(tent->tnode.tupid, data) < 0)
@@ -3746,10 +3763,10 @@ static int missing_output(tupid_t tupid, void *data)
 int tup_db_check_actual_outputs(tupid_t cmdid, struct list_head *writelist)
 {
 	struct rb_root output_tree = {NULL};
-	struct actual_output_data aod = {
-		.cmdid = cmdid,
-		.output_error = 0,
-	};
+	struct actual_output_data aod;
+
+	aod.cmdid = cmdid;
+	aod.output_error = 0;
 
 	if(get_output_tree(cmdid, &output_tree) < 0)
 		return -1;
@@ -3806,10 +3823,10 @@ int tup_db_write_inputs(tupid_t cmdid, struct rb_root *input_tree)
 {
 	struct rb_root sticky_tree = {NULL};
 	struct rb_root normal_tree = {NULL};
-	struct write_input_data wid = {
-		.cmdid = cmdid,
-		.normal_tree = &normal_tree,
-	};
+	struct write_input_data wid;
+
+	wid.cmdid = cmdid;
+	wid.normal_tree = &normal_tree;
 
 	if(get_links(cmdid, &sticky_tree, &normal_tree) < 0)
 		return -1;
@@ -3897,12 +3914,12 @@ int tup_db_check_actual_inputs(tupid_t cmdid, struct list_head *readlist)
 {
 	struct rb_root normal_tree = {NULL};
 	struct rb_root sticky_copy = {NULL};
-	struct actual_input_data aid = {
-		.cmdid = cmdid,
-		.input_error = 0,
-		.sticky_tree = {NULL},
-		.output_tree = {NULL},
-	};
+	struct actual_input_data aid;
+
+	aid.cmdid = cmdid;
+	aid.input_error = 0;
+	aid.sticky_tree.rb_node = NULL;
+	aid.output_tree.rb_node = NULL;
 
 	if(get_output_tree(cmdid, &aid.output_tree) < 0)
 		return -1;
@@ -3957,10 +3974,10 @@ static int rm_output(tupid_t tupid, void *data)
 int tup_db_write_outputs(tupid_t cmdid, struct rb_root *tree)
 {
 	struct rb_root output_tree = {NULL};
-	struct parse_output_data pod = {
-		.cmdid = cmdid,
-		.outputs_differ = 0,
-	};
+	struct parse_output_data pod;
+
+	pod.cmdid = cmdid;
+	pod.outputs_differ = 0;
 
 	if(get_output_tree(cmdid, &output_tree) < 0)
 		return -1;
@@ -4002,9 +4019,9 @@ int tup_db_write_dir_inputs(tupid_t dt, struct rb_root *tree)
 {
 	struct rb_root sticky_tree = {NULL};
 	struct rb_root normal_tree = {NULL};
-	struct write_dir_input_data wdid = {
-		.dt = dt,
-	};
+	struct write_dir_input_data wdid;
+
+	wdid.dt = dt;
 
 	if(get_links(dt, &sticky_tree, &normal_tree) < 0)
 		return -1;
@@ -4436,7 +4453,9 @@ static int adjust_ghost_symlinks(tupid_t tupid)
 	sqlite3_stmt **stmt = &stmts[_DB_ADJUST_GHOST_SYMLINKS];
 	static char s[] = "select id from node where sym=?";
 	struct id_entry *ide;
-	LIST_HEAD(del_list);
+	struct list_head del_list;
+
+	INIT_LIST_HEAD(&del_list);
 
 	if(sql_debug) fprintf(stderr, "%s [37m[%lli][0m\n", s, tupid);
 	if(!*stmt) {

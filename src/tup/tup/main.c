@@ -1,4 +1,5 @@
 /* vim: set ts=8 sw=8 sts=8 noet tw=78: */
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -291,7 +292,7 @@ static int graph(int argc, char **argv)
 	}
 
 	printf("digraph G {\n");
-	list_for_each_entry(n, &g.node_list, list) {
+	list_for_each_entry(struct node, n, &g.node_list, list) {
 		int color;
 		int fontcolor;
 		const char *shape;

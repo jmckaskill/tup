@@ -1,4 +1,5 @@
 /* vim: set ts=8 sw=8 sts=8 noet tw=78: */
+#define _GNU_SOURCE
 #include "fd.h"
 #include <stdlib.h>
 #include <unistd.h>
@@ -302,12 +303,11 @@ int fd_truncate(fd_t file, size_t sz)
 
 int fd_lock(fd_t fd)
 {
-	struct flock fl = {
-		.l_type = F_WRLCK,
-		.l_whence = SEEK_SET,
-		.l_start = 0,
-		.l_len = 0,
-	};
+	struct flock fl;
+        fl.l_type = F_WRLCK;
+	fl.l_whence = SEEK_SET;
+	fl.l_start = 0;
+	fl.l_len = 0;
 
 	if(fcntl(fd.fd, F_SETLKW, &fl) < 0) {
 		perror("fcntl F_WRLCK");
@@ -318,12 +318,11 @@ int fd_lock(fd_t fd)
 
 int fd_unlock(fd_t fd)
 {
-	struct flock fl = {
-		.l_type = F_UNLCK,
-		.l_whence = SEEK_SET,
-		.l_start = 0,
-		.l_len = 0,
-	};
+	struct flock fl;
+	fl.l_type = F_UNLCK;
+	fl.l_whence = SEEK_SET;
+	fl.l_start = 0;
+	fl.l_len = 0;
 
 	if(fcntl(fd.fd, F_SETLKW, &fl) < 0) {
 		perror("fcntl F_UNLCK");

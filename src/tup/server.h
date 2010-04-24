@@ -5,8 +5,13 @@
 #include "access_event.h"
 #include "compat.h"
 #include "file.h"
+
+#include <pthread.h>
+
+#ifndef _WIN32
 #include <signal.h>
 #include <sys/un.h>
+#endif
 
 struct server {
 	fd_t sd[2];

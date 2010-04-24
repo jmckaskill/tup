@@ -12,8 +12,11 @@ struct list_head {
 
 #define LIST_HEAD_INIT(name) { &(name), &(name) }
 
+#if 0
+/* Doesn't work in ansi C */
 #define LIST_HEAD(name) \
 	struct list_head name = LIST_HEAD_INIT(name)
+#endif
 
 static inline void INIT_LIST_HEAD(struct list_head *list)
 {
@@ -157,10 +160,10 @@ static inline void list_splice(const struct list_head *list,
  * @head:	the head for your list.
  * @member:	the name of the list_struct within the struct.
  */
-#define list_for_each_entry(pos, head, member)				\
-	for (pos = list_entry((head)->next, typeof(*pos), member);	\
+#define list_for_each_entry(type, pos, head, member)				\
+	for (pos = list_entry((head)->next, type, member);	\
 	     &pos->member != (head); 					\
-	     pos = list_entry(pos->member.next, typeof(*pos), member))
+	     pos = list_entry(pos->member.next, type, member))
 
 /**
  * list_for_each_entry_safe - iterate over list of given type safe against removal of list entry
@@ -169,10 +172,10 @@ static inline void list_splice(const struct list_head *list,
  * @head:       the head for your list.
  * @member:     the name of the list_struct within the struct.
  */
-#define list_for_each_entry_safe(pos, n, head, member)                  \
-        for (pos = list_entry((head)->next, typeof(*pos), member),      \
-                n = list_entry(pos->member.next, typeof(*pos), member); \
+#define list_for_each_entry_safe(type, pos, n, head, member)                  \
+        for (pos = list_entry((head)->next, type, member),      \
+                n = list_entry(pos->member.next, type, member); \
              &pos->member != (head);                                    \
-             pos = n, n = list_entry(n->member.next, typeof(*n), member))
+             pos = n, n = list_entry(n->member.next, type, member))
 
 #endif

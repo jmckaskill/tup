@@ -12,6 +12,10 @@
 #include <pthread.h>
 #include <errno.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+
+struct stat64;
 
 void tup_send_event(const char *file, int len, const char *file2, int len2, int at);
 
@@ -23,33 +27,43 @@ static int tup_unflock(int fd);
 static int tupsd;
 static int lockfd;
 
-static int (*s_open)(const char *, int, ...);
-static int (*s_open64)(const char *, int, ...);
-static FILE *(*s_fopen)(const char *, const char *);
-static FILE *(*s_fopen64)(const char *, const char *);
-static FILE *(*s_freopen)(const char *, const char *, FILE *);
-static int (*s_creat)(const char *, mode_t);
-static int (*s_symlink)(const char *, const char *);
-static int (*s_rename)(const char*, const char*);
-static int (*s_mkstemp)(char *template);
-static int (*s_mkostemp)(char *template, int flags);
-static int (*s_unlink)(const char*);
-static int (*s_unlinkat)(int, const char*, int);
-static int (*s_execve)(const char *filename, char *const argv[],
+typedef int (*t_open)(const char *, int, ...);
+typedef int (*t_open64)(const char *, int, ...);
+typedef FILE *(*t_fopen)(const char *, const char *);
+typedef FILE *(*t_fopen64)(const char *, const char *);
+typedef FILE *(*t_freopen)(const char *, const char *, FILE *);
+typedef int (*t_creat)(const char *, mode_t);
+typedef int (*t_symlink)(const char *, const char *);
+typedef int (*t_rename)(const char*, const char*);
+typedef int (*t_mkstemp)(char *template);
+typedef int (*t_mkostemp)(char *template, int flags);
+typedef int (*t_unlink)(const char*);
+typedef int (*t_unlinkat)(int, const char*, int);
+typedef int (*t_execve)(const char *filename, char *const argv[],
 		       char *const envp[]);
-static int (*s_execv)(const char *path, char *const argv[]);
-static int (*s_execvp)(const char *file, char *const argv[]);
-static int (*s_xstat)(int vers, const char *name, struct stat *buf);
-static int (*s_stat64)(const char *name, struct stat64 *buf);
-static int (*s_xstat64)(int vers, const char *name, struct stat64 *buf);
-static int (*s_lxstat64)(int vers, const char *path, struct stat64 *buf);
+typedef int (*t_execv)(const char *path, char *const argv[]);
+typedef int (*t_execvp)(const char *file, char *const argv[]);
+typedef int (*t___xstat)(int vers, const char *name, struct stat *buf);
+typedef int (*t_stat64)(const char *name, struct stat64 *buf);
+typedef int (*t___xstat64)(int vers, const char *name, struct stat64 *buf);
+typedef int (*t___lxstat64)(int vers, const char *path, struct stat64 *buf);
 
-#define WRAP(ptr, name) \
-	if(!ptr) { \
-		ptr = dlsym(RTLD_NEXT, name); \
-		if(!ptr) { \
+typedef union{
+	void (*fp)(void);
+	void* p;
+} fp_cast;
+
+#define PTR_TO_FP(val) ((union fp_cast_union) (val)).fp
+
+#define WRAP(name) \
+	static t_##name s_##name; \
+	if(!s_##name) { \
+		fp_cast cast; \
+		cast.p = dlsym(RTLD_NEXT, #name); \
+		s_##name = (t_##name) cast.fp; \
+		if(!s_##name) { \
 			fprintf(stderr, "tup.ldpreload: Unable to wrap '%s'\n", \
-				name); \
+				#name); \
 			exit(1); \
 		} \
 	}
@@ -59,7 +73,7 @@ int open(const char *pathname, int flags, ...)
 	int rc;
 	mode_t mode = 0;
 
-	WRAP(s_open, "open");
+	WRAP(open);
 	if(flags & O_CREAT) {
 		va_list ap;
 		va_start(ap, flags);
@@ -85,7 +99,7 @@ int open64(const char *pathname, int flags, ...)
 	int rc;
 	mode_t mode = 0;
 
-	WRAP(s_open64, "open64");
+	WRAP(open64);
 	if(flags & O_CREAT) {
 		va_list ap;
 		va_start(ap, flags);
@@ -110,7 +124,7 @@ FILE *fopen(const char *path, const char *mode)
 {
 	FILE *f;
 
-	WRAP(s_fopen, "fopen");
+	WRAP(fopen);
 	f = s_fopen(path, mode);
 	if(f) {
 		handle_file(path, "", !(mode[0] == 'r'));
@@ -125,7 +139,7 @@ FILE *fopen64(const char *path, const char *mode)
 {
 	FILE *f;
 
-	WRAP(s_fopen64, "fopen64");
+	WRAP(fopen64);
 	f = s_fopen64(path, mode);
 	if(f) {
 		handle_file(path, "", !(mode[0] == 'r'));
@@ -140,7 +154,7 @@ FILE *freopen(const char *path, const char *mode, FILE *stream)
 {
 	FILE *f;
 
-	WRAP(s_freopen, "freopen");
+	WRAP(freopen);
 	f = s_freopen(path, mode, stream);
 	if(f) {
 		handle_file(path, "", !(mode[0] == 'r'));
@@ -155,7 +169,7 @@ int creat(const char *pathname, mode_t mode)
 {
 	int rc;
 
-	WRAP(s_creat, "creat");
+	WRAP(creat);
 	rc = s_creat(pathname, mode);
 	if(rc >= 0)
 		handle_file(pathname, "", ACCESS_WRITE);
@@ -165,7 +179,7 @@ int creat(const char *pathname, mode_t mode)
 int symlink(const char *oldpath, const char *newpath)
 {
 	int rc;
-	WRAP(s_symlink, "symlink");
+	WRAP(symlink);
 	rc = s_symlink(oldpath, newpath);
 	if(rc == 0)
 		handle_file(oldpath, newpath, ACCESS_SYMLINK);
@@ -176,7 +190,7 @@ int rename(const char *old, const char *new)
 {
 	int rc;
 
-	WRAP(s_rename, "rename");
+	WRAP(rename);
 	rc = s_rename(old, new);
 	if(rc == 0) {
 		if(!ignore_file(old) && !ignore_file(new)) {
@@ -190,7 +204,7 @@ int mkstemp(char *template)
 {
 	int rc;
 
-	WRAP(s_mkstemp, "mkstemp");
+	WRAP(mkstemp);
 	rc = s_mkstemp(template);
 	if(rc != -1) {
 		handle_file(template, "", ACCESS_WRITE);
@@ -202,7 +216,7 @@ int mkostemp(char *template, int flags)
 {
 	int rc;
 
-	WRAP(s_mkostemp, "mkostemp");
+	WRAP(mkostemp);
 	rc = s_mkostemp(template, flags);
 	if(rc != -1) {
 		handle_file(template, "", ACCESS_WRITE);
@@ -214,7 +228,7 @@ int unlink(const char *pathname)
 {
 	int rc;
 
-	WRAP(s_unlink, "unlink");
+	WRAP(unlink);
 	rc = s_unlink(pathname);
 	if(rc == 0)
 		handle_file(pathname, "", ACCESS_UNLINK);
@@ -225,7 +239,7 @@ int unlinkat(int dirfd, const char *pathname, int flags)
 {
 	int rc;
 
-	WRAP(s_unlinkat, "unlinkat");
+	WRAP(unlinkat);
 	rc = s_unlinkat(dirfd, pathname, flags);
 	if(rc == 0) {
 		if(dirfd == AT_FDCWD) {
@@ -242,7 +256,7 @@ int execve(const char *filename, char *const argv[], char *const envp[])
 {
 	int rc;
 
-	WRAP(s_execve, "execve");
+	WRAP(execve);
 	handle_file(filename, "", ACCESS_READ);
 	rc = s_execve(filename, argv, envp);
 	return rc;
@@ -252,7 +266,7 @@ int execv(const char *path, char *const argv[])
 {
 	int rc;
 
-	WRAP(s_execv, "execv");
+	WRAP(execv);
 	handle_file(path, "", ACCESS_READ);
 	rc = s_execv(path, argv);
 	return rc;
@@ -287,7 +301,7 @@ int execvp(const char *file, char *const argv[])
 	int rc;
 	const char *p;
 
-	WRAP(s_execvp, "execvp");
+	WRAP(execvp);
 	for(p = file; *p; p++) {
 		if(*p == '/') {
 			handle_file(file, "", ACCESS_READ);
@@ -316,8 +330,8 @@ int fchdir(int fd)
 int __xstat(int vers, const char *name, struct stat *buf)
 {
 	int rc;
-	WRAP(s_xstat, "__xstat");
-	rc = s_xstat(vers, name, buf);
+	WRAP(__xstat);
+	rc = s___xstat(vers, name, buf);
 	if(rc < 0) {
 		if(errno == ENOENT || errno == ENOTDIR) {
 			handle_file(name, "", ACCESS_GHOST);
@@ -329,7 +343,7 @@ int __xstat(int vers, const char *name, struct stat *buf)
 int stat64(const char *filename, struct stat64 *buf)
 {
 	int rc;
-	WRAP(s_stat64, "stat64");
+	WRAP(stat64);
 	rc = s_stat64(filename, buf);
 	if(rc < 0) {
 		if(errno == ENOENT || errno == ENOTDIR) {
@@ -343,8 +357,8 @@ int __xstat64(int __ver, __const char *__filename,
 	      struct stat64 *__stat_buf)
 {
 	int rc;
-	WRAP(s_xstat64, "__xstat64");
-	rc = s_xstat64(__ver, __filename, __stat_buf);
+	WRAP(__xstat64);
+	rc = s___xstat64(__ver, __filename, __stat_buf);
 	if(rc < 0) {
 		if(errno == ENOENT || errno == ENOTDIR) {
 			handle_file(__filename, "", ACCESS_GHOST);
@@ -356,8 +370,8 @@ int __xstat64(int __ver, __const char *__filename,
 int __lxstat64(int vers, const char *path, struct stat64 *buf)
 {
 	int rc;
-	WRAP(s_lxstat64, "__lxstat64");
-	rc = s_lxstat64(vers, path, buf);
+	WRAP(__lxstat64);
+	rc = s___lxstat64(vers, path, buf);
 	if(rc < 0) {
 		if(errno == ENOENT || errno == ENOTDIR) {
 			handle_file(path, "", ACCESS_GHOST);

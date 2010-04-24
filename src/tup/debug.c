@@ -1,4 +1,7 @@
 #include "debug.h"
+#include <stdlib.h>
+#include <stdarg.h>
+#include <stdio.h>
 
 static int debugging = 0;
 static const char *dstring = NULL;
@@ -23,3 +26,11 @@ void debug_disable(void)
 {
 	debugging = 0;
 }
+
+int debug_printf(const char* format, ...)
+{
+    va_list ap;
+    va_start(ap, format);
+    return vfprintf(stderr, format, ap);
+}
+

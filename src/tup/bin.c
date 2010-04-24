@@ -50,7 +50,7 @@ struct bin *bin_find(const char *name, struct bin_list *bl)
 {
 	struct bin *b;
 
-	list_for_each_entry(b, &bl->bins, list) {
+	list_for_each_entry(struct bin, b, &bl->bins, list) {
 		if(strcmp(b->name, name) == 0) {
 			return b;
 		}

@@ -10,6 +10,7 @@
 #include "bin.h"
 #include "entry.h"
 #include "string_tree.h"
+#include "compat.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -316,12 +317,13 @@ static int parse_tupfile(struct tupfile *tf, struct buf *b, tupid_t curdir,
 			struct name_list nl;
 			struct path_list *pl, *tmppl;
 			int sym_bork = 0;
-			LIST_HEAD(plist);
+			struct list_head plist;
 			struct rb_root symtree = RB_ROOT;
 			struct rb_node *rbn;
 			struct tup_entry *tent;
 			tupid_t symid;
 
+			INIT_LIST_HEAD(&plist);
 			init_name_list(&nl);
 
 			file = line + 8;
@@ -343,7 +345,7 @@ static int parse_tupfile(struct tupfile *tf, struct buf *b, tupid_t curdir,
 
 			if(get_name_list(tf, &plist, &nl, 1) < 0)
 				return -1;
-			list_for_each_entry_safe(pl, tmppl, &plist, list) {
+			list_for_each_entry_safe(struct path_list, pl, tmppl, &plist, list) {
 				del_pl(pl);
 			}
 			/* Can only be freed after plist */
@@ -635,7 +637,7 @@ static int include_name_list(struct tupfile *tf, struct name_list *nl,
 	fd_t fd;
 	int rc;
 
-	list_for_each_entry_safe(nle, tmpnle, &nl->entries, list) {
+	list_for_each_entry_safe(struct name_list_entry, nle, tmpnle, &nl->entries, list) {
 		const char *cnc;
 		char *newcwd = NULL;
 		int newclen;
@@ -1431,7 +1433,7 @@ static int execute_rule(struct tupfile *tf, struct rule *r, struct bin_list *bl,
 					ext = nle->base + nle->extlessbaselen;
 				}
 			}
-			list_for_each_entry(sc, &ch->src_chain_list, list) {
+			list_for_each_entry(struct src_chain, sc, &ch->src_chain_list, list) {
 				char *tinput;
 				char *input_pattern;
 
@@ -1462,7 +1464,7 @@ static int execute_rule(struct tupfile *tf, struct rule *r, struct bin_list *bl,
 			}
 		}
 
-		list_for_each_entry(bal, banglist, list) {
+		list_for_each_entry(struct bang_list, bal, banglist, list) {
 			if(bal->list.next == banglist) {
 				/* Apply the output pattern specified in the rule
 				 * to the last !-macro in the *-chain.
@@ -1540,10 +1542,11 @@ static int __execute_rule(struct tupfile *tf, struct rule *r,
 		 * or would that be a confusing premature optimization?
 		 */
 		while(!list_empty(&r->inputs.entries)) {
-			nle = list_entry(r->inputs.entries.next,
-					 struct name_list_entry, list);
 			const char *ext = NULL;
 			int extlen = 0;
+
+			nle = list_entry(r->inputs.entries.next,
+					 struct name_list_entry, list);
 
 			init_name_list(&tmp_nl);
 			memcpy(&tmp_nle, nle, sizeof(*nle));
@@ -1634,11 +1637,13 @@ static int __execute_rule(struct tupfile *tf, struct rule *r,
 static int execute_reverse_rule(struct tupfile *tf, struct rule *r,
 				struct bin_list *bl, const char *cwd, int clen)
 {
-	LIST_HEAD(oplist);
+	struct list_head oplist;
 	struct path_list *pl;
 	char *eval_pattern;
 	struct name_list tmp_nl;
 	struct name_list_entry tmp_nle;
+
+	INIT_LIST_HEAD(&oplist);
 
 	if(!r->foreach) {
 		fprintf(stderr, "Error: reverse rule must use 'foreach'\n");
@@ -1726,10 +1731,12 @@ static int check_recursive_chain(struct tupfile *tf, const char *input_pattern,
 				 struct rule *r, const char *ext,
 				 const char *cwd, int clen)
 {
-	LIST_HEAD(inp_list);
+	struct list_head inp_list;
 	char *inp;
 	struct path_list *pl;
 	int extlen = strlen(ext);;
+
+	INIT_LIST_HEAD(&inp_list);
 
 	inp = strdup(input_pattern);
 	if(!inp) {
@@ -1783,13 +1790,15 @@ static int input_pattern_to_nl(struct tupfile *tf, char *p,
 			       struct name_list *nl, struct bin_list *bl,
 			       int lno, int required)
 {
-	LIST_HEAD(plist);
+	struct list_head plist;
 	struct rb_root symtree = RB_ROOT;
 	struct rb_node *rbn;
 	struct tup_entry *tent;
 	struct path_list *pl, *tmp;
 	int sym_bork = 0;
 	tupid_t symid;
+
+	INIT_LIST_HEAD(&plist);
 
 	if(get_path_list(p, &plist, tf->tupid, bl, &symtree) < 0)
 		return -1;
@@ -1808,7 +1817,7 @@ static int input_pattern_to_nl(struct tupfile *tf, char *p,
 		return -1;
 	if(get_name_list(tf, &plist, nl, required) < 0)
 		return -1;
-	list_for_each_entry_safe(pl, tmp, &plist, list) {
+	list_for_each_entry_safe(struct path_list, pl, tmp, &plist, list) {
 		del_pl(pl);
 	}
 	return 0;
@@ -1893,7 +1902,7 @@ static void make_path_list_unique(struct list_head *plist)
 	struct path_list *pl;
 	struct path_list *tmp;
 
-	list_for_each_entry_safe(pl, tmp, plist, list) {
+	list_for_each_entry_safe(struct path_list, pl, tmp, plist, list) {
 		struct path_list *pl2;
 		struct list_head *tlist;
 
@@ -1936,7 +1945,7 @@ static void make_name_list_unique(struct name_list *nl)
 	 * present, the second and further duplicates will be removed.
 	 */
 	input_list = tup_entry_get_list();
-	list_for_each_entry_safe(nle, tmp, &nl->entries, list) {
+	list_for_each_entry_safe(struct name_list_entry, nle, tmp, &nl->entries, list) {
 		if(tup_entry_in_list(nle->tent)) {
 			delete_name_list_entry(nl, nle);
 		} else {
@@ -1951,7 +1960,7 @@ static int parse_dependent_tupfiles(struct list_head *plist, struct tupfile *tf,
 {
 	struct path_list *pl;
 
-	list_for_each_entry(pl, plist, list) {
+	list_for_each_entry(struct path_list, pl, plist, list) {
 		/* Only care about non-bins, and directories that are not our
 		 * own.
 		 */
@@ -1976,7 +1985,7 @@ static int get_name_list(struct tupfile *tf, struct list_head *plist,
 {
 	struct path_list *pl;
 
-	list_for_each_entry(pl, plist, list) {
+	list_for_each_entry(struct path_list, pl, plist, list) {
 		if(pl->bin) {
 			if(nl_add_bin(pl->bin, nl) < 0)
 				return -1;
@@ -2060,7 +2069,7 @@ static int nl_add_bin(struct bin *b, struct name_list *nl)
 	struct name_list_entry *nle;
 	int extlesslen;
 
-	list_for_each_entry(be, &b->entries, list) {
+	list_for_each_entry(struct bin_entry, be, &b->entries, list) {
 		extlesslen = be->len - 1;
 		while(extlesslen > 0 && be->path[extlesslen] != '.')
 			extlesslen--;
@@ -2160,7 +2169,7 @@ static int find_existing_command(const struct name_list *onl,
 				 tupid_t *cmdid)
 {
 	struct name_list_entry *onle;
-	list_for_each_entry(onle, &onl->entries, list) {
+	list_for_each_entry(struct name_list_entry, onle, &onl->entries, list) {
 		int rc;
 		tupid_t incoming;
 
@@ -2195,15 +2204,17 @@ static int do_rule(struct tupfile *tf, struct rule *r, struct name_list *nl,
 	struct path_list *pl;
 	struct tupid_tree *cmd_tt;
 	tupid_t cmdid = -1;
-	LIST_HEAD(oplist);
+	struct list_head oplist;
 	struct rb_root tree = {NULL};
+
+	INIT_LIST_HEAD(&oplist);
 
 	/* t3017 - empty rules are just pass-through to get the input into the
 	 * bin.
 	 */
 	if(r->command_len == 0) {
 		if(r->bin) {
-			list_for_each_entry(nle, &nl->entries, list) {
+			list_for_each_entry(struct name_list_entry, nle, &nl->entries, list) {
 				if(bin_add_entry(r->bin, nle->path, nle->len, nle->tent) < 0)
 					return -1;
 			}
@@ -2332,15 +2343,15 @@ static int do_rule(struct tupfile *tf, struct rule *r, struct name_list *nl,
 		return -1;
 	free_tupid_tree(&tree);
 
-	list_for_each_entry(nle, &nl->entries, list) {
+	list_for_each_entry(struct name_list_entry, nle, &nl->entries, list) {
 		if(tupid_tree_add_dup(&tree, nle->tent->tnode.tupid) < 0)
 			return -1;
 	}
-	list_for_each_entry(nle, &r->order_only_inputs.entries, list) {
+	list_for_each_entry(struct name_list_entry, nle, &r->order_only_inputs.entries, list) {
 		if(tupid_tree_add_dup(&tree, nle->tent->tnode.tupid) < 0)
 			return -1;
 	}
-	list_for_each_entry(nle, &r->bang_oo_inputs.entries, list) {
+	list_for_each_entry(struct name_list_entry, nle, &r->bang_oo_inputs.entries, list) {
 		if(tupid_tree_add_dup(&tree, nle->tent->tnode.tupid) < 0)
 			return -1;
 	}
@@ -2546,7 +2557,7 @@ static char *tup_printf(const char *cmd, int cmd_len, struct name_list *nl,
 		p = next + 1;
 		if(*next == 'f') {
 			int first = 1;
-			list_for_each_entry(nle, &nl->entries, list) {
+			list_for_each_entry(struct name_list_entry, nle, &nl->entries, list) {
 				if(!first) {
 					s[x] = ' ';
 					x++;
@@ -2557,7 +2568,7 @@ static char *tup_printf(const char *cmd, int cmd_len, struct name_list *nl,
 			}
 		} else if(*next == 'b') {
 			int first = 1;
-			list_for_each_entry(nle, &nl->entries, list) {
+			list_for_each_entry(struct name_list_entry, nle, &nl->entries, list) {
 				if(!first) {
 					s[x] = ' ';
 					x++;
@@ -2568,7 +2579,7 @@ static char *tup_printf(const char *cmd, int cmd_len, struct name_list *nl,
 			}
 		} else if(*next == 'B') {
 			int first = 1;
-			list_for_each_entry(nle, &nl->entries, list) {
+			list_for_each_entry(struct name_list_entry, nle, &nl->entries, list) {
 				if(!first) {
 					s[x] = ' ';
 					x++;
@@ -2582,7 +2593,7 @@ static char *tup_printf(const char *cmd, int cmd_len, struct name_list *nl,
 			x += extlen;
 		} else if(*next == 'o') {
 			int first = 1;
-			list_for_each_entry(nle, &onl->entries, list) {
+			list_for_each_entry(struct name_list_entry, nle, &onl->entries, list) {
 				if(!first) {
 					s[x] = ' ';
 					x++;

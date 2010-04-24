@@ -6,6 +6,7 @@
 #include "db.h"
 #include "fileio.h"
 #include "entry.h"
+#include "compat.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -173,7 +174,7 @@ static int handle_rename(const char *from, const char *to,
 	if(get_path_elements(to, &pg_to) < 0)
 		return -1;
 
-	list_for_each_entry(fent, &info->write_list, list) {
+	list_for_each_entry(struct file_entry, fent, &info->write_list, list) {
 		if(pg_eq(&fent->pg, &pg_from)) {
 			del_pel_list(&fent->pg.path_list);
 			free(fent->filename);
@@ -187,7 +188,7 @@ static int handle_rename(const char *from, const char *to,
 				return -1;
 		}
 	}
-	list_for_each_entry(fent, &info->read_list, list) {
+	list_for_each_entry(struct file_entry, fent, &info->read_list, list) {
 		if(pg_eq(&fent->pg, &pg_from)) {
 			del_pel_list(&fent->pg.path_list);
 			free(fent->filename);
@@ -239,7 +240,7 @@ static void check_unlink_list(const struct pel_group *pg, struct list_head *u_li
 {
 	struct file_entry *fent, *tmp;
 
-	list_for_each_entry_safe(fent, tmp, u_list, list) {
+	list_for_each_entry_safe(struct file_entry, fent, tmp, u_list, list) {
 		if(pg_eq(&fent->pg, pg)) {
 			del_entry(fent);
 		}
@@ -253,12 +254,12 @@ static void handle_unlink(struct file_info *info)
 	while(!list_empty(&info->unlink_list)) {
 		u = list_entry(info->unlink_list.next, struct file_entry, list);
 
-		list_for_each_entry_safe(fent, tmp, &info->write_list, list) {
+		list_for_each_entry_safe(struct file_entry, fent, tmp, &info->write_list, list) {
 			if(pg_eq(&fent->pg, &u->pg)) {
 				del_entry(fent);
 			}
 		}
-		list_for_each_entry_safe(fent, tmp, &info->read_list, list) {
+		list_for_each_entry_safe(struct file_entry, fent, tmp, &info->read_list, list) {
 			if(pg_eq(&fent->pg, &u->pg)) {
 				del_entry(fent);
 			}
@@ -291,7 +292,7 @@ static int update_write_info(tupid_t cmdid, tupid_t dt, fd_t dfd,
 		w = list_entry(info->write_list.next, struct file_entry, list);
 
 		/* Remove duplicate write entries */
-		list_for_each_entry_safe(r, tmp, &info->write_list, list) {
+		list_for_each_entry_safe(struct file_entry, r, tmp, &info->write_list, list) {
 			if(r != w && pg_eq(&w->pg, &r->pg)) {
 				del_entry(r);
 			}
@@ -381,7 +382,7 @@ out_skip:
 		if(file_set_mtime(tent, dfd, sym_entry->to) < 0)
 			return -1;
 
-		list_for_each_entry_safe(g, tmp, &info->ghost_list, list) {
+		list_for_each_entry_safe(struct file_entry, g, tmp, &info->ghost_list, list) {
 			/* Use strcmp instead of pg_eq because we don't have
 			 * the pgs for sym_entries. Also this should only
 			 * happen when 'ln' does a stat() before it does a

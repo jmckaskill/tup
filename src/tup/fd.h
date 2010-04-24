@@ -20,12 +20,13 @@ struct buf {
 typedef struct fdwrap fd_t;
 
 #if defined _WIN32
+union fdwrap_data {
+	HANDLE file;
+	struct buf dir;
+};
 struct fdwrap {
-	union {
-		HANDLE      file;
-		struct buf  dir;
-	} u;
-	int is_dir : 1;
+	union fdwrap_data u;
+	unsigned int is_dir : 1;
 };
 
 struct stat {

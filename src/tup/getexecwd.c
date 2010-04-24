@@ -77,13 +77,20 @@ const char *getexecwd(void)
 static int check_path(const char *path, const char *file)
 {
 	struct stat buf;
-	unsigned int len;
+	size_t pathsz, filesz;
 
-	len = snprintf(mycwd, sizeof(mycwd), "%s/%s", path, file);
-	if(len >= sizeof(mycwd)) {
+	pathsz = strlen(path);
+	filesz = strlen(file);
+
+	if(pathsz + filesz + 1 >= sizeof(mycwd)) {
 		fprintf(stderr, "Unable to fit path in mycwd buffer.\n");
 		goto out_err;
 	}
+
+	memcpy(mycwd, path, pathsz);
+	mycwd[pathsz] = '/';
+	memcpy(mycwd + pathsz + 1, file, filesz + 1);
+
 	if(stat(mycwd, &buf) < 0)
 		goto out_err;
 	if(S_ISREG(buf.st_mode)) {

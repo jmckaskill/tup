@@ -33,6 +33,7 @@
 #ifndef _SQLITE3_H_
 #define _SQLITE3_H_
 #include <stdarg.h>     /* Needed for the definition of va_list */
+#include <stdint.h>
 
 /*
 ** Make sure we can call this stuff from C++.
@@ -226,8 +227,10 @@ typedef struct sqlite3 sqlite3;
   typedef __int64 sqlite_int64;
   typedef unsigned __int64 sqlite_uint64;
 #else
-  typedef long long int sqlite_int64;
-  typedef unsigned long long int sqlite_uint64;
+  /*typedef long long int sqlite_int64;*/
+  /*typedef unsigned long long int sqlite_uint64;*/
+  typedef int64_t sqlite_int64;
+  typedef uint64_t sqlite_uint64;
 #endif
 typedef sqlite_int64 sqlite3_int64;
 typedef sqlite_uint64 sqlite3_uint64;
