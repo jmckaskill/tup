@@ -1,5 +1,5 @@
 
-: |> sh echo "const char* tup_version(void) {return \"$(git describe)\";}" > %o |> version.c
+: |> echo const char* tup_version(void) {return "bootstrap";} > %o |> version.c
 : version.c |> !cc |> version.o
 
 dllflags = ws2_32.lib psapi.lib user32.lib /OUT:tup-dllinject.dll /DLL
@@ -18,5 +18,7 @@ objs += version.o
 LDFLAGS_tup += ws2_32.lib /OUT:tup.exe
 : $(objs) tup-dllinject.lib |> ^ LINK tup^ $(LINK) %f $(LDFLAGS) $(LDFLAGS_tup) |> tup.exe
 
+LDFLAGS_cp += /OUT:cp.exe
+: src/cp/*.o |> ^ LINK cp^ $(LINK) %f $(LDFLAGS) $(LDFLAGS_cp) |> cp.exe
 
 
