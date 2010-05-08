@@ -5,13 +5,40 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <fcntl.h>
+
+#ifdef _WIN32
+#include <compat/win32/misc.h>
+#include <ldpreload/dllinject.h>
+#else
+#include <sys/types.h>
 #include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#endif
 
 static char mycwd[PATH_MAX];
 static int check_path(const char *path, const char *file);
 
+
+#ifdef _WIN32
+int init_getexecwd(const char *argv0)
+{
+	char* slash;
+	if (GetModuleFileNameA(NULL, mycwd, PATH_MAX - 1) == 0)
+		return -1;
+
+	mycwd[PATH_MAX - 1] = '\0';
+	slash = strrchr(mycwd, '\\');
+	if (slash) {
+		*slash = '\0';
+	}
+
+	tup_inject_setexecdir(mycwd);
+
+	return 0;
+}
+
+#else
 int init_getexecwd(const char *argv0)
 {
 	char *slash;
@@ -68,11 +95,6 @@ out_err:
 	return rc;
 }
 
-const char *getexecwd(void)
-{
-	return mycwd;
-}
-
 static int check_path(const char *path, const char *file)
 {
 	struct stat buf;
@@ -83,6 +105,7 @@ static int check_path(const char *path, const char *file)
 		fprintf(stderr, "Unable to fit path in mycwd buffer.\n");
 		goto out_err;
 	}
+
 	if(stat(mycwd, &buf) < 0)
 		goto out_err;
 	if(S_ISREG(buf.st_mode)) {
@@ -93,3 +116,10 @@ out_err:
 	mycwd[0] = 0;
 	return -1;
 }
+#endif
+
+const char *getexecwd(void)
+{
+	return mycwd;
+}
+

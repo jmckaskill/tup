@@ -1,6 +1,7 @@
 /* vim: set ts=8 sw=8 sts=8 noet tw=78: */
 #include "db.h"
 #include "db_util.h"
+#include "compat.h"
 #include "array_size.h"
 #include "linux/list.h"
 #include "tupid_tree.h"
@@ -16,6 +17,10 @@
 #include <stdlib.h>
 #include <errno.h>
 #include "sqlite3/sqlite3.h"
+
+#ifdef _WIN32
+#include <compat/win32/misc.h>
+#endif
 
 #define DB_VERSION 12
 

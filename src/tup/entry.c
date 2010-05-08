@@ -2,6 +2,7 @@
 #include "entry.h"
 #include "config.h"
 #include "db.h"
+#include "compat.h"
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>

@@ -2,7 +2,11 @@
 #ifndef tup_debug_h
 #define tup_debug_h
 
+#ifdef _WIN32
+#include <compat/win32/misc.h>
+#else
 #include <unistd.h>
+#endif
 
 /** Environment variable to set if debugging is enabled. */
 #define TUP_DEBUG "tup_debug"

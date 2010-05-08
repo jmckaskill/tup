@@ -10,11 +10,16 @@
 #include "bin.h"
 #include "entry.h"
 #include "string_tree.h"
+#include "compat.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 #include <ctype.h>
+
+#ifdef _WIN32
+#include <compat/win32/misc.h>
+#endif
 
 struct name_list {
 	struct list_head entries;

@@ -6,10 +6,14 @@
 #include "db.h"
 #include "fileio.h"
 #include "entry.h"
+#include "compat.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifndef _WIN32
 #include <sys/stat.h>
+#endif
 
 struct file_entry {
 	char *filename;

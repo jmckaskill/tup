@@ -5,9 +5,14 @@
 #include <stdlib.h>
 #include <time.h>
 
+#ifdef _WIN32
+#include <windows.h>
+#include <compat/win32/stat.h>
+#else
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#endif
 
 #ifdef __linux__
 #define TUP_HAVE_AT
@@ -20,7 +25,25 @@ struct buf {
 
 typedef struct fdwrap fd_t;
 
-#if defined TUP_HAVE_AT
+#if defined _WIN32
+union fdwrap_data {
+	HANDLE		file;
+	struct buf	dir;
+};
+struct fdwrap {
+	union fdwrap_data u;
+	unsigned int is_dir : 1;
+};
+#define FD_INITIALIZER {{INVALID_HANDLE_VALUE}, 0}
+
+
+/* GENERIC_* use the high bits */
+#define O_RDONLY GENERIC_READ
+#define O_RDWR   (GENERIC_READ | GENERIC_WRITE)
+#define O_WRONLY GENERIC_WRITE
+#define O_TRUNC  1
+
+#elif defined TUP_HAVE_AT
 struct fdwrap {
 	int fd;
 };

@@ -1,12 +1,10 @@
 /* vim: set ts=8 sw=8 sts=8 noet tw=78: */
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
-#include <fcntl.h>
 #include <time.h>
 #include <errno.h>
-#include <unistd.h>
 #include "tup/config.h"
 #include "tup/lock.h"
 #include "tup/getexecwd.h"
@@ -19,6 +17,14 @@
 #include "tup/version.h"
 #include "tup/path.h"
 #include "tup/entry.h"
+
+#ifdef _WIN32
+#include <compat/win32/misc.h>
+#else
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#endif
 
 static int init(int argc, char **argv);
 static int graph_cb(void *arg, struct tup_entry *tent, int style);

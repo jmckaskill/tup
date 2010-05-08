@@ -8,9 +8,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifndef _WIN32
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#endif
 
 struct id_flags {
 	tupid_t tupid;

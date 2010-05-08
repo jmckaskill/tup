@@ -15,15 +15,22 @@
 #include "monitor.h"
 #include "path.h"
 #include "colors.h"
+#include "getexecwd.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 #include <ctype.h>
+
+#ifdef _WIN32
+#include "ldpreload/dllinject.h"
+#include <compat/win32/misc.h>
+#else
 #include <pthread.h>
 #include <sys/wait.h>
 #include <sys/socket.h>
 #include <sys/time.h>
+#endif
 
 #define MAX_JOBS 65535
 
@@ -43,9 +50,8 @@ static void *todo_work(void *arg);
 static int update(struct node *n, struct server *s);
 static int run(struct node* n, struct server* s, const char* name, fd_t dfd);
 static int var_replace(struct node *n);
-static void sighandler(int sig);
 static void tup_main_progress(const char *s);
-static void show_progress(int sum, int tot, struct node *n);
+static void show_progress(int sum, int toXt, struct node *n);
 
 static int do_keep_going;
 static int num_jobs;
@@ -54,8 +60,8 @@ static int warnings;
 
 static int sig_quit = 0;
 
-static pthread_mutex_t db_mutex = PTHREAD_MUTEX_INITIALIZER;
-
+#ifndef _WIN32
+static void sighandler(int sig);
 static const char *signal_err[] = {
 	NULL, /* 0 */
 	"Hangup detected on controlling terminal or death of controlling process",
@@ -74,6 +80,9 @@ static const char *signal_err[] = {
 	"Timer signal from alarm(2)",
 	"Termination signal", /* 15 */
 };
+#endif
+
+static pthread_mutex_t db_mutex;
 
 struct worker_thread {
 	pthread_t pid;
@@ -94,6 +103,8 @@ int updater(int argc, char **argv, int phase)
 {
 	int x;
 	int do_scan = 1;
+
+	pthread_mutex_init(&db_mutex, NULL);
 
 	do_keep_going = tup_db_config_get_int("keep_going");
 	num_jobs = tup_db_config_get_int("num_jobs");
@@ -309,7 +320,9 @@ static int process_update_nodes(void)
 {
 	struct graph g;
 	int rc;
+#ifndef _WIN32
 	struct sigaction sigact;
+#endif
 
 	if(create_graph(&g, TUP_NODE_CMD) < 0)
 		return -1;
@@ -323,11 +336,13 @@ static int process_update_nodes(void)
 		tup_main_progress("No commands to execute.\n");
 	}
 
+#ifndef _WIN32
 	sigact.sa_handler = &sighandler;
 	sigact.sa_flags = SA_RESTART;
 	sigemptyset(&sigact.sa_mask);
 	sigaction(SIGINT, &sigact, NULL);
 	sigaction(SIGTERM, &sigact, NULL);
+#endif
 
 	tup_db_begin();
 
@@ -933,6 +948,96 @@ err_out:
 	return -1;
 }
 
+#ifdef _WIN32
+#define CMDSTR "CMD.EXE /Q /C "
+static int run(struct node* n, struct server* s, const char* name, fd_t dfd)
+{
+	DWORD return_code = 1;
+	BOOL ret;
+	PROCESS_INFORMATION pi;
+	STARTUPINFOA sa;
+	size_t namesz = strlen(name);
+	size_t cmdsz = sizeof(CMDSTR) - 1;
+	char* cmdline = (char*) alloca(namesz + cmdsz + 1 + 1);
+
+	cmdline[0] = '\0';
+	strcat(cmdline, CMDSTR);
+	strcat(cmdline, name);
+
+	memset(&sa, 0, sizeof(sa));
+	sa.cb = sizeof(STARTUPINFOW);
+
+	pi.hProcess = INVALID_HANDLE_VALUE;
+	pi.hThread = INVALID_HANDLE_VALUE;
+
+	ret = CreateProcessA(
+		NULL,
+		cmdline,
+		NULL,
+		NULL,
+		FALSE,
+		CREATE_SUSPENDED,
+		NULL,
+		dfd.u.dir.s,
+		&sa,
+		&pi);
+
+	if (!ret) {
+		fprintf(stderr, "CreateProcess failed %d\n", GetLastError());
+		goto end;
+	}
+
+	if (tup_inject_dll(&pi, s->udp_port)) {
+		fprintf(stderr, "Failed to inject dll %d\n", GetLastError());
+		goto end;
+	}
+
+	if (ResumeThread(pi.hThread) == (DWORD)~0) {
+		fprintf(stderr, "ResumeThread failed %d\n", GetLastError());
+		goto end;
+	}
+
+	if (WaitForSingleObject(pi.hThread, INFINITE) != WAIT_OBJECT_0) {
+		fprintf(stderr, "WFSO thread failed %d\n", GetLastError());
+		goto end;
+	}
+
+	if (WaitForSingleObject(pi.hProcess, INFINITE) != WAIT_OBJECT_0) {
+		fprintf(stderr, "WFSO process failed %d\n", GetLastError());
+		goto end;
+	}
+
+	if (!GetExitCodeProcess(pi.hProcess, &return_code)) {
+		fprintf(stderr, "Failed to get exit code %d\n", GetLastError());
+		goto end;
+	}
+
+	if(return_code != 0) {
+		fprintf(stderr, " *** Command %"PRI_TUPID" failed with return value %u: %s\n", n->tnode.tupid, (unsigned int) return_code, name);
+		goto end;
+	}
+
+	return_code = 0;
+
+end:
+	CloseHandle(pi.hThread);
+	CloseHandle(pi.hProcess);
+	if (return_code == 0) {
+		int rc;
+		pthread_mutex_lock(&db_mutex);
+		rc = write_files(n->tnode.tupid, n->tent->dt, dfd, name, &s->finfo, &warnings);
+		pthread_mutex_unlock(&db_mutex);
+		if (rc < 0) {
+			return -1;
+		}
+
+		return 0;
+	} else {
+		return -1;
+	}
+}
+
+#else
 static int run(struct node* n, struct server* s, const char* name, fd_t dfd)
 {
 	int pid = fork();
@@ -1000,6 +1105,7 @@ static int run(struct node* n, struct server* s, const char* name, fd_t dfd)
 	}
 }
 
+#endif
 static int var_replace(struct node *n)
 {
 	fd_t dfd;
@@ -1123,6 +1229,7 @@ err_close_dfd:
 	return rc;
 }
 
+#ifndef _WIN32
 static void sighandler(int sig)
 {
 	if(sig) {/* unused */}
@@ -1145,6 +1252,7 @@ static void sighandler(int sig)
 		 */
 	}
 }
+#endif
 
 static void tup_main_progress(const char *s)
 {

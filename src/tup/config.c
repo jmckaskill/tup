@@ -6,9 +6,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifdef _WIN32
+#include <compat/win32/misc.h>
+#else
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#endif
 
 static char tup_wd[PATH_MAX];
 static int tup_wd_offset;
