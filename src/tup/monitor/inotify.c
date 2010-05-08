@@ -1,3 +1,4 @@
+/* vim: set ts=8 sw=8 sts=8 noet tw=78: */
 /*
  * I humbly present the Love-Trowbridge (Lovebridge?) recursive directory
  * scanning algorithm:

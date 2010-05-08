@@ -1,3 +1,4 @@
+/* vim: set ts=8 sw=8 sts=8 noet tw=78: */
 #include "dircache.h"
 #include "linux/rbtree.h"
 #include <stdio.h>

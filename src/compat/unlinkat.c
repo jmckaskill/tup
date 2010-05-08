@@ -1,3 +1,4 @@
+/* vim: set ts=8 sw=8 sts=8 noet tw=78: */
 #include <stdio.h>
 #include <fcntl.h>
 #include <unistd.h>

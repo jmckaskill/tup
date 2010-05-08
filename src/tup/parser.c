@@ -1,3 +1,4 @@
+/* vim: set ts=8 sw=8 sts=8 noet tw=78: */
 #define _GNU_SOURCE
 #define _ATFILE_SOURCE
 #include "parser.h"

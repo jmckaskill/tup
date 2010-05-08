@@ -1,3 +1,4 @@
+/* vim: set ts=8 sw=8 sts=8 noet tw=78: */
 #include "config.h"
 #include "compat.h"
 #include "db.h"

@@ -1,3 +1,4 @@
+/* vim: set ts=8 sw=8 sts=8 noet tw=78: */
 /*
   Red Black Trees
   (C) 1999  Andrea Arcangeli <andrea@suse.de>

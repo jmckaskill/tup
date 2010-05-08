@@ -1,3 +1,4 @@
+/* vim: set ts=8 sw=8 sts=8 noet tw=78: */
 /*
  * Simple doubly linked list implementation from linux/include/linux/list.h
  */
