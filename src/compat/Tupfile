@@ -16,4 +16,10 @@ srcs += dir_mutex.c
 srcs += mkdirat.c
 srcs += readlinkat.c
 endif
+
+ifeq (@(TUP_PLATFORM),windows)
+srcs += win32/*.c
+endif
+
 : foreach $(srcs) |> !cc |> %B.o
+

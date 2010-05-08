@@ -1,0 +1,28 @@
+
+CC = cl
+LINK = link
+TUP_MONITOR = null
+
+CFLAGS += /I$(TUP_CWD)\src 
+CFLAGS += /I$(TUP_CWD)\src\compat\msvc
+CFLAGS += /I$(TUP_CWD)\src\compat\win32
+CFLAGS += /nologo
+CFLAGS += /c
+CFLAGS += /D__STDC__
+CFLAGS += /D_CRT_SECURE_NO_DEPRECATE
+CFLAGS += /FC
+CFLAGS += /W3
+CFLAGS += /WX
+CFLAGS += /MT
+
+CFLAGS += /Ox
+CFLAGS += /DNDEBUG
+
+LDFLAGS += /NOLOGO
+LDFLAGS += /MACHINE:X86
+LDFLAGS += /SUBSYSTEM:CONSOLE
+LDFLAGS += /OPT:REF 
+LDFLAGS += /OPT:ICF
+
+!cc = |> ^ CC %f^ $(CC) /c /nologo /Fo%o %f $(CFLAGS) $(CFLAGS_%f) |>
+

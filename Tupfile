@@ -1,19 +1,9 @@
 # vim: set ts=8 sw=8 sts=8 noet tw=78:
 include_rules
 
-LDFLAGS_tup-ldpreload.so += $(FPIC)
-LDFLAGS_tup-ldpreload.so += $(SHARED)
-LDFLAGS_tup-ldpreload.so += -ldl
-: src/ldpreload/*.o |> !ld |> tup-ldpreload.so
+ifeq (@(TUP_PLATFORM),windows)
+  include Tupfile.windows
+else
+  include Tupfile.unix
+endif
 
-: src/tup/client/*.o |> !ar |> libtup_client.a
-
-srcs = src/tup/*.o
-srcs += src/tup/monitor/*.o
-srcs += src/tup/colors/*.o
-srcs += src/linux/*.o
-srcs += src/sqlite3/*.o
-srcs += src/compat/*.o
-: $(srcs) |> !ar |> libtup.a
-
-: src/tup/tup/main.o libtup.a |> ^ LINK tup^ version=`git describe`; echo "const char *tup_version(void) {return \"$version\";}" | gcc -x c -c - -o tup-version.o; $(CC) %f tup-version.o -o tup -lpthread $(LDFLAGS) |> tup tup-version.o

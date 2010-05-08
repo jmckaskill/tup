@@ -1,5 +1,11 @@
 # vim: set ts=8 sw=8 sts=8 noet tw=78:
 include_rules
 
-CFLAGS += $(FPIC)
-: foreach *.c |> !cc |> %B.o
+ifeq (@(TUP_PLATFORM),windows)
+  srcs += dllinject.c
+else
+  srcs += ldpreload.c
+endif
+
+: foreach $(srcs) |> !cc |> %B.o
+

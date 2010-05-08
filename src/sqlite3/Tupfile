@@ -2,7 +2,10 @@
 include_rules
 
 # Remove warnings from CFLAGS
-CFLAGS = -Os
+ifeq (@(TUP_PLATFORM),windows)
+else
+  CFLAGS = -Os
+endif
 
 # Use memory by default for temporary tables
 CFLAGS += -DSQLITE_TEMP_STORE=2
