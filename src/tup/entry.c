@@ -1,12 +1,9 @@
 /* vim: set ts=8 sw=8 sts=8 noet tw=78: */
-#define _ATFILE_SOURCE
 #include "entry.h"
 #include "config.h"
 #include "db.h"
 #include <stdlib.h>
 #include <string.h>
-#include <fcntl.h>
-#include <unistd.h>
 #include <errno.h>
 
 static struct rb_root tup_tree = RB_ROOT;
@@ -259,36 +256,37 @@ int tup_entry_resolve_dirsym(void)
 	return 0;
 }
 
-int tup_entry_open_tupid(tupid_t tupid)
+int tup_entry_open_tupid(tupid_t tupid, fd_t* pfd)
 {
 	struct tup_entry *tent;
 
 	if(tup_entry_add(tupid, &tent) < 0)
 		return -1;
-	return tup_entry_open(tent);
+	return tup_entry_open(tent, pfd);
 }
 
-int tup_entry_open(struct tup_entry *tent)
+int tup_entry_open(struct tup_entry *tent, fd_t* pfd)
 {
-	int dfd;
-	int newdfd;
+	fd_t dfd;
+	int err;
 
-	if(tent->parent == NULL)
-		return dup(tup_top_fd());
+	if(tent->parent == NULL) {
+		fd_dup(tup_top_fd(), pfd);
+		return 0;
+	}
 
-	dfd = tup_entry_open(tent->parent);
-	if(dfd < 0)
-		return dfd;
+	if (tup_entry_open(tent->parent, &dfd))
+		return -1;
 
-	newdfd = openat(dfd, tent->name.s, O_RDONLY);
-	close(dfd);
-	if(newdfd < 0) {
+	err = fd_openat(dfd, tent->name.s, O_RDONLY, pfd);
+	fd_close(dfd);
+	if(err) {
 		if(errno == ENOENT)
 			return -ENOENT;
 		perror(tent->name.s);
 		return -1;
 	}
-	return newdfd;
+	return 0;
 }
 
 static struct tup_entry *new_entry(tupid_t tupid, tupid_t dt, tupid_t sym,

@@ -3,6 +3,7 @@
 #define tup_fileio_h
 
 #include "tupid.h"
+#include "fd.h"
 #include "linux/list.h"
 #include "linux/rbtree.h"
 #include <time.h>
@@ -29,7 +30,7 @@ int create_name_file(tupid_t dt, const char *file, time_t mtime,
 		     struct tup_entry **entry);
 tupid_t create_command_file(tupid_t dt, const char *cmd);
 tupid_t create_dir_file(tupid_t dt, const char *path);
-tupid_t update_symlink_fileat(tupid_t dt, int dfd, const char *file,
+tupid_t update_symlink_fileat(tupid_t dt, fd_t dfd, const char *file,
 			      time_t mtime, int force);
 tupid_t tup_file_mod(tupid_t dt, const char *file);
 tupid_t tup_file_mod_mtime(tupid_t dt, const char *file, time_t mtime,

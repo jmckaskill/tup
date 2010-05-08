@@ -146,7 +146,7 @@ static int init(int argc, char **argv)
 	int x;
 	int db_sync = 1;
 	int force_init = 0;
-	int fd;
+	fd_t fd;
 
 	for(x=0; x<argc; x++) {
 		if(strcmp(argv[x], "--no-sync") == 0) {
@@ -157,8 +157,7 @@ static int init(int argc, char **argv)
 		}
 	}
 
-	fd = open(".", O_RDONLY);
-	if(fd < 0) {
+	if (fd_open(".", O_RDONLY, &fd)) {
 		perror(".");
 		return -1;
 	}
@@ -173,11 +172,11 @@ static int init(int argc, char **argv)
 		}
 		goto err_close;
 	}
-	if(fchdir(fd) < 0) {
+	if(fd_chdir(fd) < 0) {
 		perror("fchdir");
 		goto err_close;
 	}
-	close(fd);
+	fd_close(fd);
 
 	if(mkdir(TUP_DIR, 0777) != 0) {
 		perror(TUP_DIR);
@@ -188,30 +187,40 @@ static int init(int argc, char **argv)
 		return -1;
 	}
 
-	if(creat(TUP_OBJECT_LOCK, 0666) < 0) {
+	if(fd_create(TUP_OBJECT_LOCK, O_RDONLY, 0666, &fd)) {
 		perror(TUP_OBJECT_LOCK);
 		return -1;
 	}
-	if(creat(TUP_SHARED_LOCK, 0666) < 0) {
+	fd_close(fd);
+
+	if(fd_create(TUP_SHARED_LOCK, O_RDONLY, 0666, &fd) < 0) {
 		perror(TUP_SHARED_LOCK);
 		return -1;
 	}
-	if(creat(TUP_TRI_LOCK, 0666) < 0) {
+	fd_close(fd);
+
+	if(fd_create(TUP_TRI_LOCK, O_RDONLY, 0666, &fd) < 0) {
 		perror(TUP_TRI_LOCK);
 		return -1;
 	}
-	if(creat(TUP_MONITOR_LOCK, 0666) < 0) {
+	fd_close(fd);
+
+	if(fd_create(TUP_MONITOR_LOCK, O_RDONLY, 0666, &fd) < 0) {
 		perror(TUP_MONITOR_LOCK);
 		return -1;
 	}
-	if(creat(TUP_VARDICT_FILE, 0666) < 0) {
+	fd_close(fd);
+
+	if(fd_create(TUP_VARDICT_FILE, O_RDONLY, 0666, &fd) < 0) {
 		perror(TUP_VARDICT_FILE);
 		return -1;
 	}
+	fd_close(fd);
+
 	return 0;
 
 err_close:
-	close(fd);
+	fd_close(fd);
 	return -1;
 }
 
@@ -535,9 +544,12 @@ static int touch(int argc, char **argv)
 		struct path_element *pel = NULL;
 		tupid_t dt;
 
-		if(lstat(argv[x], &buf) < 0) {
-			close(open(argv[x], O_WRONLY | O_CREAT, 0666));
-			if(lstat(argv[x], &buf) < 0) {
+		if(lstat(argv[x], &buf)) {
+			fd_t fd = FD_INITIALIZER;
+			fd_create(argv[x], O_WRONLY, 0666, &fd);
+			fd_close(fd);
+
+			if(lstat(argv[x], &buf)) {
 				fprintf(stderr, "lstat: ");
 				perror(argv[x]);
 				return -1;
@@ -556,15 +568,14 @@ static int touch(int argc, char **argv)
 			if(tup_file_mod_mtime(dt, pel->path, buf.st_mtime, 1) < 0)
 				return -1;
 		} else if(S_ISLNK(buf.st_mode)) {
-			int fd;
-			fd = open(".", O_RDONLY);
-			if(fd < 0) {
+			fd_t fd;
+			if(fd_open(".", O_RDONLY, &fd)) {
 				perror(".");
 				return -1;
 			}
 			if(update_symlink_fileat(dt, fd, pel->path, buf.st_mtime, 1) < 0)
 				return -1;
-			close(fd);
+			fd_close(fd);
 		}
 		free(pel);
 	}

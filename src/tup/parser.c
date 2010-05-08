@@ -1,11 +1,8 @@
 /* vim: set ts=8 sw=8 sts=8 noet tw=78: */
-#define _GNU_SOURCE
-#define _ATFILE_SOURCE
 #include "parser.h"
 #include "linux/list.h"
 #include "flist.h"
 #include "fileio.h"
-#include "fslurp.h"
 #include "db.h"
 #include "vardb.h"
 #include "graph.h"
@@ -16,11 +13,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <fcntl.h>
-#include <unistd.h>
 #include <errno.h>
 #include <ctype.h>
-#include <sys/stat.h>
 
 struct name_list {
 	struct list_head entries;
@@ -102,7 +96,7 @@ struct build_name_list_args {
 
 struct tupfile {
 	tupid_t tupid;
-	int dfd;
+	fd_t dfd;
 	struct graph *g;
 	struct vardb vdb;
 	struct rb_root cmd_tree;
@@ -191,7 +185,7 @@ static char *eval(struct tupfile *tf, const char *string,
 int parse(struct node *n, struct graph *g)
 {
 	struct tupfile tf;
-	int fd;
+	fd_t fd;
 	int rc = -1;
 	struct buf b;
 
@@ -220,20 +214,18 @@ int parse(struct node *n, struct graph *g)
 	if(tup_db_dirtype_to_tree(tf.tupid, &g->delete_tree, &g->delete_count, TUP_NODE_GENERATED) < 0)
 		return -1;
 
-	tf.dfd = tup_entry_open(n->tent);
-	if(tf.dfd < 0) {
+	if(tup_entry_open(n->tent, &tf.dfd)) {
 		fprintf(stderr, "Error: Unable to open directory ID %"PRI_TUPID"\n", tf.tupid);
 		goto out_close_vdb;
 	}
 
-	fd = openat(tf.dfd, "Tupfile", O_RDONLY);
 	/* No Tupfile means we have nothing to do */
-	if(fd < 0) {
+	if(fd_openat(tf.dfd, "Tupfile", O_RDONLY, &fd)) {
 		rc = 0;
 		goto out_close_dfd;
 	}
 
-	if((rc = fslurp(fd, &b)) < 0) {
+	if((rc = fd_slurp(fd, &b)) < 0) {
 		goto out_close_file;
 	}
 	rc = parse_tupfile(&tf, &b, tf.tupid, ".", 1);
@@ -245,9 +237,9 @@ int parse(struct node *n, struct graph *g)
 	if(tup_db_write_dir_inputs(tf.tupid, &tf.input_tree) < 0)
 		return -1;
 out_close_file:
-	close(fd);
+	fd_close(fd);
 out_close_dfd:
-	close(tf.dfd);
+	fd_close(tf.dfd);
 out_close_vdb:
 	if(vardb_close(&tf.vdb) < 0)
 		rc = -1;
@@ -582,7 +574,7 @@ static int gitignore(struct tupfile *tf)
 {
 	char *s;
 	int len;
-	int fd;
+	fd_t fd;
 
 	if(tup_db_alloc_generated_nodelist(&s, &len, tf->tupid, &tf->g->delete_tree) < 0)
 		return -1;
@@ -600,32 +592,31 @@ static int gitignore(struct tupfile *tf)
 					  &tf->g->delete_count);
 		}
 
-		fd = openat(tf->dfd, ".gitignore", O_CREAT|O_WRONLY|O_TRUNC, 0666);
-		if(fd < 0) {
+		if(fd_createat(tf->dfd, ".gitignore", O_WRONLY|O_TRUNC, 0666, &fd)) {
 			perror(".gitignore");
 			return -1;
 		}
 		if(tf->tupid == 1) {
-			if(write(fd, ".tup\n", 5) < 0) {
+			if(fd_write(fd, ".tup\n", 5) < 0) {
 				perror("write");
 				goto err_close;
 			}
 		}
-		if(write(fd, "/.*.swp\n", 8) < 0) {
+		if(fd_write(fd, "/.*.swp\n", 8) < 0) {
 			perror("write");
 			goto err_close;
 		}
-		if(write(fd, "/.gitignore\n", 12) < 0) {
+		if(fd_write(fd, "/.gitignore\n", 12) < 0) {
 			perror("write");
 			goto err_close;
 		}
 		if(s && len) {
-			if(write(fd, s, len) < 0) {
+			if(fd_write(fd, s, len) < 0) {
 				perror("write");
 				goto err_close;
 			}
 		}
-		close(fd);
+		fd_close(fd);
 	}
 	if(s) {
 		free(s); /* Freeze gopher! */
@@ -633,7 +624,7 @@ static int gitignore(struct tupfile *tf)
 	return 0;
 
 err_close:
-	close(fd);
+	fd_close(fd);
 	return -1;
 }
 
@@ -642,7 +633,7 @@ static int include_name_list(struct tupfile *tf, struct name_list *nl,
 {
 	struct name_list_entry *nle, *tmpnle;
 	struct buf incb;
-	int fd;
+	fd_t fd;
 	int rc;
 
 	list_for_each_entry_safe(struct name_list_entry, nle, tmpnle, &nl->entries, list) {
@@ -696,13 +687,12 @@ static int include_name_list(struct tupfile *tf, struct name_list *nl,
 			newclen = clen;
 		}
 
-		fd = tup_entry_open(nle->tent);
-		if(fd < 0) {
+		if(tup_entry_open(nle->tent, &fd)) {
 			fprintf(stderr, "Error including '%s': %s\n", nle->path, strerror(errno));
 			return -1;
 		}
-		rc = fslurp(fd, &incb);
-		close(fd);
+		rc = fd_slurp(fd, &incb);
+		fd_close(fd);
 		if(rc < 0) {
 			fprintf(stderr, "Error slurping file.\n");
 			return -1;

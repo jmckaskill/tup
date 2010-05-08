@@ -1,6 +1,4 @@
 /* vim: set ts=8 sw=8 sts=8 noet tw=78: */
-/* _ATFILE_SOURCE for fstatat() */
-#define _ATFILE_SOURCE
 #include "path.h"
 #include "flist.h"
 #include "fileio.h"
@@ -13,14 +11,14 @@
 #include <unistd.h>
 #include <sys/stat.h>
 
-int watch_path(tupid_t dt, int dfd, const char *file, struct rb_root *tree,
-	       int (*callback)(tupid_t newdt, int dfd, const char *file))
+int watch_path(tupid_t dt, fd_t dfd, const char *file, struct rb_root *tree,
+	       int (*callback)(tupid_t newdt, fd_t dfd, const char *file))
 {
 	struct flist f = {0, 0, 0};
 	struct stat buf;
 	tupid_t newdt;
 
-	if(fstatat(dfd, file, &buf, AT_SYMLINK_NOFOLLOW) != 0) {
+	if(fd_lstatat(dfd, file, &buf) != 0) {
 		fprintf(stderr, "tup monitor error: fstatat failed\n");
 		perror(file);
 		return -1;
@@ -46,7 +44,7 @@ int watch_path(tupid_t dt, int dfd, const char *file, struct rb_root *tree,
 		}
 		return 0;
 	} else if(S_ISDIR(buf.st_mode)) {
-		int newfd;
+		fd_t newfd;
 
 		newdt = create_dir_file(dt, file);
 		if(tree) {
@@ -58,13 +56,12 @@ int watch_path(tupid_t dt, int dfd, const char *file, struct rb_root *tree,
 				return -1;
 		}
 
-		newfd = openat(dfd, file, O_RDONLY);
-		if(newfd < 0) {
+		if (fd_openat(dfd, file, O_RDONLY, &newfd)) {
 			fprintf(stderr, "tup monitor error: Unable to openat() directory.\n");
 			perror(file);
 			return -1;
 		}
-		if(fchdir(newfd) < 0) {
+		if(fd_chdir(newfd) < 0) {
 			perror("fchdir");
 			return -1;
 		}
@@ -76,7 +73,7 @@ int watch_path(tupid_t dt, int dfd, const char *file, struct rb_root *tree,
 				      callback) < 0)
 				return -1;
 		}
-		close(newfd);
+		fd_close(newfd);
 		return 0;
 	} else {
 		fprintf(stderr, "Error: File '%s' is not regular nor a dir?\n",

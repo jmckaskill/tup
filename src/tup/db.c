@@ -1,5 +1,4 @@
 /* vim: set ts=8 sw=8 sts=8 noet tw=78: */
-#define _ATFILE_SOURCE
 #include "db.h"
 #include "db_util.h"
 #include "array_size.h"
@@ -8,17 +7,14 @@
 #include "fileio.h"
 #include "config.h"
 #include "vardb.h"
-#include "fslurp.h"
 #include "entry.h"
 #include "version.h"
 #include "platform.h"
+#include "fd.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <fcntl.h>
-#include <unistd.h>
 #include <errno.h>
-#include <sys/socket.h>
 #include "sqlite3/sqlite3.h"
 
 #define DB_VERSION 12
@@ -129,7 +125,7 @@ static int adjust_ghost_symlinks(tupid_t tupid);
 static int reclaim_ghosts(void);
 static int ghost_reclaimable(tupid_t tupid);
 static int get_db_var_tree(struct vardb *vdb);
-static int get_file_var_tree(struct vardb *vdb, int fd);
+static int get_file_var_tree(struct vardb *vdb, fd_t fd);
 static int var_flag_dirs(tupid_t tupid);
 static int var_flag_cmds(tupid_t tupid);
 static int delete_var_entry(tupid_t tupid);
@@ -1187,22 +1183,23 @@ int tup_db_modify_dir(tupid_t dt)
 	return 0;
 }
 
-int tup_db_open_tupid(tupid_t tupid)
+int tup_db_open_tupid(tupid_t tupid, fd_t* pfd)
 {
-	int rc;
+	int rc = 0;
 	int dbrc;
 	sqlite3_stmt **stmt = &stmts[DB_OPEN_TUPID];
 	static char s[] = "select dir, name from node where id=?";
 	tupid_t parent;
 	char *path;
-	int fd;
+	fd_t fd;
 
 	if(tupid == 0) {
 		fprintf(stderr, "Error: Trying to tup_db_open_tupid(0)\n");
 		return -1;
 	}
 	if(tupid == 1) {
-		return dup(tup_top_fd());
+		fd_dup(tup_top_fd(), pfd);
+		return 0;
 	}
 	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID"][0m\n", s, tupid);
 	if(!*stmt) {
@@ -1242,20 +1239,18 @@ int tup_db_open_tupid(tupid_t tupid)
 		return -1;
 	}
 
-	fd = tup_db_open_tupid(parent);
-	if(fd < 0) {
+	if(tup_db_open_tupid(parent, &fd)) {
 		free(path);
-		return fd;
+		return -1;
 	}
 
-	rc = openat(fd, path, O_RDONLY);
-	if(rc < 0) {
+	if(fd_openat(fd, path, O_RDONLY, pfd)) {
 		if(errno == ENOENT)
 			rc = -ENOENT;
 		else
 			perror(path);
 	}
-	close(fd);
+	fd_close(fd);
 	free(path);
 
 	return rc;
@@ -3128,7 +3123,7 @@ int tup_db_get_varlen(const char *var, int varlen)
 	return ve->vallen;
 }
 
-tupid_t tup_db_write_var(const char *var, int varlen, int fd)
+tupid_t tup_db_write_var(const char *var, int varlen, fd_t fd)
 {
 	int dbrc;
 	int len;
@@ -3183,7 +3178,7 @@ tupid_t tup_db_write_var(const char *var, int varlen, int fd)
 			value = "0";
 	}
 
-	if(write(fd, value, len) == len)
+	if(fd_write(fd, value, len) == len)
 		tupid = sqlite3_column_int64(*stmt, 0);
 
 out_reset:
@@ -3252,26 +3247,26 @@ out_reset:
 
 static int save_vardict_file(struct vardb *vdb)
 {
-	int dfd;
-	int fd;
+	fd_t dfd;
+	fd_t fd;
 	int rc = -1;
+	int err;
 	struct rb_node *rbn;
 	unsigned int x;
 
 	if(tup_db_var_changed == 0)
 		return 0;
 
-	dfd = tup_db_open_tupid(DOT_DT);
-	if(dfd < 0) {
+	if(tup_db_open_tupid(DOT_DT, &dfd)) {
 		return -1;
 	}
-	fd = openat(dfd, TUP_VARDICT_FILE, O_CREAT|O_WRONLY|O_TRUNC, 0666);
-	close(dfd);
-	if(fd < 0) {
+	err = fd_createat(dfd, TUP_VARDICT_FILE, O_WRONLY|O_TRUNC, 0666, &fd);
+	fd_close(dfd);
+	if(err) {
 		perror("openat");
 		return -1;
 	}
-	if(write(fd, &vdb->count, sizeof(vdb->count)) != sizeof(vdb->count)) {
+	if(fd_write(fd, &vdb->count, sizeof(vdb->count)) != sizeof(vdb->count)) {
 		perror("write");
 		goto out_err;
 	}
@@ -3282,7 +3277,7 @@ static int save_vardict_file(struct vardb *vdb)
 		struct var_entry *ve;
 		st = rb_entry(rbn, struct string_tree, rbn);
 		ve = container_of(st, struct var_entry, var);
-		if(write(fd, &x, sizeof(x)) != sizeof(x)) {
+		if(fd_write(fd, &x, sizeof(x)) != sizeof(x)) {
 			perror("write");
 			goto out_err;
 		}
@@ -3299,19 +3294,19 @@ static int save_vardict_file(struct vardb *vdb)
 		st = rb_entry(rbn, struct string_tree, rbn);
 		ve = container_of(st, struct var_entry, var);
 
-		if(write(fd, st->s, st->len) != st->len) {
+		if(fd_write(fd, st->s, st->len) != st->len) {
 			perror("write");
 			goto out_err;
 		}
-		if(write(fd, "=", 1) != 1) {
+		if(fd_write(fd, "=", 1) != 1) {
 			perror("write");
 			goto out_err;
 		}
-		if(write(fd, ve->value, ve->vallen) != ve->vallen) {
+		if(fd_write(fd, ve->value, ve->vallen) != ve->vallen) {
 			perror("write");
 			goto out_err;
 		}
-		if(write(fd, "\0", 1) != 1) {
+		if(fd_write(fd, "\0", 1) != 1) {
 			perror("write");
 			goto out_err;
 		}
@@ -3320,7 +3315,7 @@ static int save_vardict_file(struct vardb *vdb)
 	rc = 0;
 	tup_db_var_changed = 0;
 out_err:
-	close(fd);
+	fd_close(fd);
 	return rc;
 }
 
@@ -3373,21 +3368,19 @@ int tup_db_read_vars(tupid_t dt, const char *file)
 {
 	struct vardb db_tree;
 	struct vardb file_tree;
-	int dfd;
-	int fd;
+	fd_t dfd;
+	fd_t fd;
 	int rc;
 
 	vardb_init(&db_tree);
 	vardb_init(&file_tree);
 	if(get_db_var_tree(&db_tree) < 0)
 		return -1;
-	dfd = tup_db_open_tupid(dt);
-	if(dfd < 0) {
+	if(tup_db_open_tupid(dt, &dfd)) {
 		fprintf(stderr, "Unable to open directory containing tup config\n");
 		return -1;
 	}
-	fd = openat(dfd, file, O_RDONLY);
-	if(fd < 0) {
+	if(fd_openat(dfd, file, O_RDONLY, &fd)) {
 		if(errno != ENOENT) {
 			perror(file);
 			return -1;
@@ -3402,9 +3395,9 @@ int tup_db_read_vars(tupid_t dt, const char *file)
 		 * ghost nodes and such.
 		 */
 		rc = get_file_var_tree(&file_tree, fd);
-		close(fd);
+		fd_close(fd);
 	}
-	close(dfd);
+	fd_close(dfd);
 	if(rc < 0)
 		return -1;
 
@@ -4509,7 +4502,7 @@ out_reset:
 		return -1;
 
 	while(!list_empty(&del_list)) {
-		int dfd;
+		fd_t dfd;
 		struct tup_entry *tent;
 		ide = list_entry(del_list.next, struct id_entry, list);
 
@@ -4519,8 +4512,7 @@ out_reset:
 		tent->symlink = NULL;
 		tent->sym = -1;
 
-		dfd = tup_entry_open(tent->parent);
-		if(dfd < 0)
+		if(tup_entry_open(tent->parent, &dfd))
 			return -1;
 		if(update_symlink_fileat(tent->dt, dfd, tent->name.s, tent->mtime, 0) < 0)
 			return -1;
@@ -4693,12 +4685,12 @@ out_reset:
 	return rc;
 }
 
-static int get_file_var_tree(struct vardb *vdb, int fd)
+static int get_file_var_tree(struct vardb *vdb, fd_t fd)
 {
 	struct buf b;
 	char *p;
 
-	if(fslurp(fd, &b) < 0)
+	if(fd_slurp(fd, &b) < 0)
 		return -1;
 
 	p = b.s;

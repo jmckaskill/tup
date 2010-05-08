@@ -1,5 +1,5 @@
 /* vim: set ts=8 sw=8 sts=8 noet tw=78: */
-#define _ATFILE_SOURCE
+#define _GNU_SOURCE
 #include "updater.h"
 #include "graph.h"
 #include "fileio.h"
@@ -10,7 +10,6 @@
 #include "server.h"
 #include "file.h"
 #include "lock.h"
-#include "fslurp.h"
 #include "array_size.h"
 #include "config.h"
 #include "monitor.h"
@@ -21,10 +20,8 @@
 #include <string.h>
 #include <errno.h>
 #include <ctype.h>
-#include <fcntl.h>
 #include <pthread.h>
 #include <sys/wait.h>
-#include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 
@@ -44,6 +41,7 @@ static void *create_work(void *arg);
 static void *update_work(void *arg);
 static void *todo_work(void *arg);
 static int update(struct node *n, struct server *s);
+static int run(struct node* n, struct server* s, const char* name, fd_t dfd);
 static int var_replace(struct node *n);
 static void sighandler(int sig);
 static void tup_main_progress(const char *s);
@@ -51,7 +49,7 @@ static void show_progress(int sum, int tot, struct node *n);
 
 static int do_keep_going;
 static int num_jobs;
-static int vardict_fd;
+static fd_t vardict_fd;
 static int warnings;
 
 static int sig_quit = 0;
@@ -79,8 +77,11 @@ static const char *signal_err[] = {
 
 struct worker_thread {
 	pthread_t pid;
-	int sock;        /* 1 sock and no shoes? What a life... */
-	int lockfd;      /* lock fd for .tup/jobXXXX/.tuplock */
+	pthread_mutex_t* read_lock;
+	pthread_mutex_t* write_lock;
+	fd_t read;
+	fd_t write;
+	fd_t lockfd;     /* lock fd for .tup/jobXXXX/.tuplock */
 	struct graph *g; /* This should only be used in create_work() and todo_work */
 };
 
@@ -329,16 +330,15 @@ static int process_update_nodes(void)
 	sigaction(SIGTERM, &sigact, NULL);
 
 	tup_db_begin();
-	vardict_fd = openat(tup_top_fd(), TUP_VARDICT_FILE, O_RDONLY);
-	if(vardict_fd < 0) {
+
+	if (fd_openat(tup_top_fd(), TUP_VARDICT_FILE, O_RDONLY, &vardict_fd)) {
 		/* Create vardict if it doesn't exist, since I forgot to add
 		 * that to the database update part whenever I added this file.
 		 * Not sure if this is the best approach, but it at least
 		 * prevents a useless error message from coming up.
 		 */
 		if(errno == ENOENT) {
-			vardict_fd = openat(tup_top_fd(), TUP_VARDICT_FILE, O_CREAT|O_RDONLY, 0666);
-			if(vardict_fd < 0) {
+			if(fd_createat(tup_top_fd(), TUP_VARDICT_FILE, O_RDONLY, 0666, &vardict_fd)) {
 				perror(TUP_VARDICT_FILE);
 				return -1;
 			}
@@ -356,7 +356,7 @@ static int process_update_nodes(void)
 		fprintf(stderr, "tup error: execute_graph returned %i - abort. This is probably a bug.\n", rc);
 		return -1;
 	}
-	close(vardict_fd);
+	fd_close(vardict_fd);
 	tup_db_commit();
 	if(rc < 0)
 		return -1;
@@ -514,19 +514,24 @@ static int execute_graph(struct graph *g, int keep_going, int jobs,
 	struct node *root;
 	struct worker_thread *workers;
 	int num_processed = 0;
-	int socks[2];
+	fd_t to_worker[2];
+	fd_t from_worker[2];
 	int rc = -1;
 	int x;
 	int active = 0;
-	int tupfd;
+	fd_t tupfd;
+	pthread_mutex_t read_lock;
+	pthread_mutex_t write_lock;
 
-	if(socketpair(AF_UNIX, SOCK_DGRAM, 0, socks) < 0) {
-		perror("socketpair");
+	pthread_mutex_init(&read_lock, NULL);
+	pthread_mutex_init(&write_lock, NULL);
+
+	if(fd_pipe(to_worker) < 0 || fd_pipe(from_worker) < 0) {
+		perror("pipe");
 		return -2;
 	}
 
-	tupfd = openat(tup_top_fd(), TUP_DIR, O_RDONLY);
-	if(tupfd < 0) {
+	if(fd_openat(tup_top_fd(), TUP_DIR, O_RDONLY, &tupfd)) {
 		perror(TUP_DIR);
 		return -2;
 	}
@@ -539,18 +544,20 @@ static int execute_graph(struct graph *g, int keep_going, int jobs,
 	for(x=0; x<jobs; x++) {
 		char lockname[] = "jobXXXX/.tuplock";
 		workers[x].g = g;
-		workers[x].sock = socks[1];
+		workers[x].read = to_worker[0];
+		workers[x].write = from_worker[1];
+		workers[x].read_lock = &read_lock;
+		workers[x].write_lock = &write_lock;
 		snprintf(lockname+3, 5, "%04x", x);
 		lockname[7] = 0;
-		if(mkdirat(tupfd, lockname, 0777) < 0) {
+		if(fd_mkdirat(tupfd, lockname, 0777) < 0) {
 			if(errno != EEXIST) {
 				perror("mkdirat");
 				return -2;
 			}
 		}
 		lockname[7] = '/';
-		workers[x].lockfd = openat(tupfd, lockname, O_RDWR|O_CREAT, 0644);
-		if(workers[x].lockfd < 0) {
+		if(fd_createat(tupfd, lockname, O_RDWR, 0644, &workers[x].lockfd)) {
 			perror(lockname);
 			return -2;
 		}
@@ -559,7 +566,7 @@ static int execute_graph(struct graph *g, int keep_going, int jobs,
 			return -2;
 		}
 	}
-	close(tupfd);
+	fd_close(tupfd);
 
 	root = list_entry(g->node_list.next, struct node, list);
 	DEBUGP("root node: %"PRI_TUPID"\n", root->tnode.tupid);
@@ -593,7 +600,7 @@ static int execute_graph(struct graph *g, int keep_going, int jobs,
 		}
 		list_del(&n->list);
 		active++;
-		if(send(socks[0], &n, sizeof(n), 0) != sizeof(n)) {
+		if(fd_send(to_worker[1], &n, sizeof(n), 0) != sizeof(n)) {
 			perror("send");
 			return -2;
 		}
@@ -611,7 +618,7 @@ check_empties:
 
 			/* recv() might get EINTR if we ctrl-c or kill tup */
 			do {
-				ret = recv(socks[0], &wrc, sizeof(wrc), 0);
+				ret = fd_recv(from_worker[0], &wrc, sizeof(wrc), 0);
 				if(ret == sizeof(wrc))
 					break;
 				if(ret < 0 && errno != EINTR) {
@@ -659,15 +666,19 @@ keep_going:
 out:
 	for(x=0; x<jobs; x++) {
 		struct node *n = NULL;
-		send(socks[0], &n, sizeof(n), 0);
+		fd_send(to_worker[1], &n, sizeof(n), 0);
 	}
 	for(x=0; x<jobs; x++) {
 		pthread_join(workers[x].pid, NULL);
-		close(workers[x].lockfd);
+		fd_close(workers[x].lockfd);
 	}
 	free(workers); /* Viva la revolucion! */
-	close(socks[0]);
-	close(socks[1]);
+	pthread_mutex_destroy(&read_lock, NULL);
+	pthread_mutex_destroy(&write_lock, NULL);
+	fd_close(from_worker[0]);
+	fd_close(from_worker[1]);
+	fd_close(to_worker[0]);
+	fd_close(to_worker[1]);
 	return rc;
 }
 
@@ -677,11 +688,15 @@ static void *create_work(void *arg)
 	struct graph *g = wt->g;
 	struct node *n;
 
-	while(recv(wt->sock, &n, sizeof(n), 0) == sizeof(n)) {
+	for (;;) {
 		struct work_rc wrc;
 		int rc = 0;
 
-		if(n == NULL)
+		pthread_mutex_lock(wt->read_lock);
+		rc = fd_recv(wt->read, &n, sizeof(n), 0);
+		pthread_mutex_unlock(wt->read_lock);
+
+		if(rc != sizeof(n) || n == NULL)
 			break;
 
 		if(n->tent->type == TUP_NODE_DIR) {
@@ -705,7 +720,12 @@ static void *create_work(void *arg)
 
 		wrc.rc = rc;
 		wrc.n = n;
-		if(send(wt->sock, &wrc, sizeof(wrc), 0) != sizeof(wrc)) {
+
+		pthread_mutex_lock(wt->write_lock);
+		rc = fd_send(wt->write, &wrc, sizeof(wrc), 0);
+		pthread_mutex_unlock(wt->write_lock);
+
+		if (rc != sizeof(wrc)) {
 			perror("write");
 			return NULL;
 		}
@@ -726,12 +746,16 @@ static void *update_work(void *arg)
 	}
 	s->lockfd = wt->lockfd;
 
-	while(recv(wt->sock, &n, sizeof(n), 0) == sizeof(n)) {
+	for (;;) {
 		struct edge *e;
 		int rc = 0;
 		struct work_rc wrc;
 
-		if(n == NULL)
+		pthread_mutex_lock(wt->read_lock);
+		rc = fd_recv(wt->read, &n, sizeof(n), 0);
+		pthread_mutex_unlock(wt->read_lock);
+
+		if(rc != sizeof(n) || n == NULL)
 			break;
 
 		if(n->tent->type == TUP_NODE_CMD) {
@@ -779,9 +803,14 @@ static void *update_work(void *arg)
 
 		wrc.rc = rc;
 		wrc.n = n;
-		if(send(wt->sock, &wrc, sizeof(wrc), 0) != sizeof(wrc)) {
+
+		pthread_mutex_lock(wt->write_lock);
+		rc = fd_send(wt->write, &wrc, sizeof(wrc), 0);
+		pthread_mutex_unlock(wt->write_lock);
+
+		if (rc != sizeof(wrc)) {
 			perror("write");
-			break;
+			return NULL;
 		}
 	}
 	free(s);
@@ -794,10 +823,15 @@ static void *todo_work(void *arg)
 	struct graph *g = wt->g;
 	struct node *n;
 
-	while(recv(wt->sock, &n, sizeof(n), 0) == sizeof(n)) {
+	for (;;) {
 		struct work_rc wrc;
+		int rc;
 
-		if(n == NULL)
+		pthread_mutex_lock(wt->read_lock);
+		rc = fd_recv(wt->read, &n, sizeof(n), 0);
+		pthread_mutex_unlock(wt->read_lock);
+
+		if(rc != sizeof(n) || n == NULL)
 			break;
 
 		if(n->tent->type == g->count_flags)
@@ -805,7 +839,12 @@ static void *todo_work(void *arg)
 
 		wrc.rc = 0;
 		wrc.n = n;
-		if(send(wt->sock, &wrc, sizeof(wrc), 0) != sizeof(wrc)) {
+
+		pthread_mutex_lock(wt->write_lock);
+		rc = fd_send(wt->write, &wrc, sizeof(wrc), 0);
+		pthread_mutex_unlock(wt->write_lock);
+
+		if (rc != sizeof(wrc)) {
 			perror("write");
 			return NULL;
 		}
@@ -813,13 +852,13 @@ static void *todo_work(void *arg)
 	return NULL;
 }
 
-static int unlink_outputs(int dfd, struct node *n)
+static int unlink_outputs(fd_t dfd, struct node *n)
 {
 	struct edge *e;
 	struct node *output;
 	for(e = n->edges; e; e = e->next) {
 		output = e->dest;
-		if(unlinkat(dfd, output->tent->name.s, 0) < 0) {
+		if(fd_unlinkat(dfd, output->tent->name.s) < 0) {
 			if(errno != ENOENT) {
 				perror("unlinkat");
 				fprintf(stderr, "tup error: Unable to unlink previous output file: %s\n", output->tent->name.s);
@@ -832,15 +871,12 @@ static int unlink_outputs(int dfd, struct node *n)
 
 static int update(struct node *n, struct server *s)
 {
-	int status;
-	int pid;
-	int dfd = -1;
-	int exit_status = -1;
+	fd_t dfd;
 	const char *name = n->tent->name.s;
-	int rc;
 
 	/* Commands that begin with a ',' are special var/sed commands */
 	if(name[0] == ',') {
+		int rc;
 		pthread_mutex_lock(&db_mutex);
 		rc = var_replace(n);
 		pthread_mutex_unlock(&db_mutex);
@@ -859,15 +895,14 @@ static int update(struct node *n, struct server *s)
 		}
 		while(*name && *name != '^') name++;
 		if(!*name) {
-			fprintf(stderr, "Error: Missing ending '^' flag in command %lli: %s\n", n->tnode.tupid, n->tent->name.s);
+			fprintf(stderr, "Error: Missing ending '^' flag in command %"PRI_TUPID": %s\n", n->tnode.tupid, n->tent->name.s);
 			return -1;
 		}
 		name++;
 		while(isspace(*name)) name++;
 	}
 
-	dfd = tup_entry_open(n->tent->parent);
-	if(dfd < 0) {
+	if(tup_entry_open(n->tent->parent, &dfd)) {
 		fprintf(stderr, "Error: Unable to open directory for update work.\n");
 		tup_db_print(stderr, n->tent->parent->tnode.tupid);
 		goto err_out;
@@ -880,11 +915,34 @@ static int update(struct node *n, struct server *s)
 		fprintf(stderr, "Error starting update server.\n");
 		goto err_close_dfd;
 	}
-	pid = fork();
-	if(pid < 0) {
-		perror("fork");
+
+	if (run(n, s, name, dfd)) {
 		goto err_close_dfd;
 	}
+
+	if(stop_server(s) < 0) {
+		goto err_close_dfd;
+	}
+
+	fd_close(dfd);
+	return 0;
+
+err_close_dfd:
+	fd_close(dfd);
+err_out:
+	return -1;
+}
+
+static int run(struct node* n, struct server* s, const char* name, fd_t dfd)
+{
+	int pid = fork();
+	int status;
+
+	if(pid < 0) {
+		perror("fork");
+		return -1;
+	}
+
 	if(pid == 0) {
 		/* Child */
 		struct sigaction sa;
@@ -897,7 +955,7 @@ static int update(struct node *n, struct server *s)
 		sigemptyset(&sa.sa_mask);
 		sigaction(SIGINT, &sa, NULL);
 		sigaction(SIGTERM, &sa, NULL);
-		if(fchdir(dfd) < 0) {
+		if(fd_chdir(dfd) < 0) {
 			perror("fchdir");
 			exit(1);
 		}
@@ -906,24 +964,27 @@ static int update(struct node *n, struct server *s)
 		perror("execl");
 		exit(1);
 	}
+
 	if(waitpid(pid, &status, 0) < 0) {
 		perror("waitpid");
-		goto err_cmd_failed;
-	}
-	if(stop_server(s) < 0) {
-		goto err_cmd_failed;
+		return -1;
 	}
 
 	if(WIFEXITED(status)) {
 		if(WEXITSTATUS(status) == 0) {
+			int rc;
 			pthread_mutex_lock(&db_mutex);
 			rc = write_files(n->tnode.tupid, n->tent->dt, dfd, name, &s->finfo, &warnings);
 			pthread_mutex_unlock(&db_mutex);
-			if(rc < 0)
-				goto err_cmd_failed;
+			if(rc < 0) {
+				fprintf(stderr, " *** Command %"PRI_TUPID" failed: %s\n", n->tnode.tupid, name);
+				return -1;
+			}
+
+			return 0;
 		} else {
-			exit_status = WEXITSTATUS(status);
-			goto err_cmd_failed;
+			fprintf(stderr, " *** Command %"PRI_TUPID" failed with return value %i: %s\n", n->tnode.tupid, (int) WEXITSTATUS(status), name);
+			return -1;
 		}
 	} else if(WIFSIGNALED(status)) {
 		int sig = WTERMSIG(status);
@@ -932,31 +993,18 @@ static int update(struct node *n, struct server *s)
 		if(sig >= 0 && sig < ARRAY_SIZE(signal_err) && signal_err[sig])
 			errmsg = signal_err[sig];
 		fprintf(stderr, " *** Killed by signal %i (%s)\n", sig, errmsg);
-		goto err_cmd_failed;
+		return -1;
 	} else {
 		fprintf(stderr, "tup error: Expected exit status to be WIFEXITED or WIFSIGNALED. Got: %i\n", status);
-		goto err_cmd_failed;
+		return -1;
 	}
-
-	close(dfd);
-	return rc;
-
-err_cmd_failed:
-	if(exit_status == -1)
-		fprintf(stderr, " *** Command %"PRI_TUPID" failed: %s\n", n->tnode.tupid, name);
-	else
-		fprintf(stderr, " *** Command %"PRI_TUPID" failed with return value %i: %s\n", n->tnode.tupid, exit_status, name);
-err_close_dfd:
-	close(dfd);
-err_out:
-	return -1;
 }
 
 static int var_replace(struct node *n)
 {
-	int dfd;
-	int ifd;
-	int ofd;
+	fd_t dfd;
+	fd_t ifd;
+	fd_t ofd;
 	struct buf b;
 	char *input;
 	char *rbracket;
@@ -973,10 +1021,9 @@ static int var_replace(struct node *n)
 	while(isspace(*input))
 		input++;
 
-	dfd = tup_entry_open(n->tent->parent);
-	if(dfd < 0)
+	if(tup_entry_open(n->tent->parent, &dfd))
 		return -1;
-	if(fchdir(dfd) < 0) {
+	if(fd_chdir(dfd) < 0) {
 		perror("fchdir");
 		return -1;
 	}
@@ -1007,17 +1054,15 @@ static int var_replace(struct node *n)
 	if(tup_db_create_link(tent->tnode.tupid, n->tnode.tupid, TUP_LINK_NORMAL) < 0)
 		return -1;
 
-	ifd = open(input, O_RDONLY);
-	if(ifd < 0) {
+	if(fd_open(input, O_RDONLY, &ifd)) {
 		perror(input);
 		goto err_close_dfd;
 	}
-	if(fslurp(ifd, &b) < 0) {
+	if(fd_slurp(ifd, &b) < 0) {
 		goto err_close_ifd;
 	}
 	output = rbracket+2;
-	ofd = creat(output, 0666);
-	if(ofd < 0) {
+	if(fd_create(output, O_WRONLY|O_TRUNC, 0666, &ofd)) {
 		perror(output);
 		goto err_free_buf;
 	}
@@ -1031,7 +1076,7 @@ static int var_replace(struct node *n)
 		while(at < e && *at != '@') {
 			at++;
 		}
-		if(write(ofd, p, at-p) != at-p) {
+		if(fd_write(ofd, p, at-p) != at-p) {
 			perror("write");
 			goto err_close_ofd;
 		}
@@ -1052,7 +1097,7 @@ static int var_replace(struct node *n)
 				return -1;
 			p = rat + 1;
 		} else {
-			if(write(ofd, p, rat-p) != rat-p) {
+			if(fd_write(ofd, p, rat-p) != rat-p) {
 				perror("write");
 				goto err_close_ofd;
 			}
@@ -1068,13 +1113,13 @@ static int var_replace(struct node *n)
 	rc = file_set_mtime(tent, dfd, output);
 
 err_close_ofd:
-	close(ofd);
+	fd_close(ofd);
 err_free_buf:
 	free(b.s);
 err_close_ifd:
-	close(ifd);
+	fd_close(ifd);
 err_close_dfd:
-	close(dfd);
+	fd_close(dfd);
 	return rc;
 }
 

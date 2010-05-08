@@ -2,6 +2,8 @@
 #ifndef tup_lock_h
 #define tup_lock_h
 
+#include "fd.h"
+
 /** Tri-lock */
 #define TUP_SHARED_LOCK ".tup/shared"
 #define TUP_OBJECT_LOCK ".tup/object"
@@ -23,13 +25,8 @@ void tup_lock_exit(void);
 void tup_lock_close(void);
 
 /* Tri-lock functions */
-int tup_sh_lock(void);
-int tup_obj_lock(void);
-int tup_tri_lock(void);
-
-/* Wrappers for fcntl */
-int tup_flock(int fd);
-int tup_unflock(int fd);
-int tup_wait_flock(int fd);
+fd_t tup_sh_lock(void);
+fd_t tup_obj_lock(void);
+fd_t tup_tri_lock(void);
 
 #endif

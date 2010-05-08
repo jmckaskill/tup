@@ -1,5 +1,4 @@
 /* vim: set ts=8 sw=8 sts=8 noet tw=78: */
-#define _ATFILE_SOURCE
 #include "fileio.h"
 #include "db.h"
 #include "entry.h"
@@ -23,22 +22,21 @@ int delete_name_file(tupid_t tupid)
 
 int delete_file(tupid_t dt, const char *name)
 {
-	int dirfd;
+	fd_t dirfd;
 	int rc = 0;
+	int err;
 
-	dirfd = tup_entry_open_tupid(dt);
-	if(dirfd < 0) {
-		if(dirfd == -ENOENT) {
-			/* If the directory doesn't exist, the file can't
-			 * either
-			 */
-			return 0;
-		} else {
-			return -1;
-		}
+	err = tup_entry_open_tupid(dt, &dirfd);
+	if(err == -ENOENT) {
+		/* If the directory doesn't exist, the file can't
+		 * either
+		 */
+		return 0;
+	} else if (err) {
+		return -1;
 	}
 
-	if(unlinkat(dirfd, name, 0) < 0) {
+	if(fd_unlinkat(dirfd, name) < 0) {
 		/* Don't care if the file is already gone. */
 		if(errno != ENOENT) {
 			perror(name);
@@ -48,6 +46,6 @@ int delete_file(tupid_t dt, const char *name)
 	}
 
 out:
-	close(dirfd);
+	fd_close(dirfd);
 	return rc;
 }

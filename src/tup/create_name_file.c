@@ -1,11 +1,10 @@
 /* vim: set ts=8 sw=8 sts=8 noet tw=78: */
-/* _ATFILE_SOURCE for readlinkat */
-#define _ATFILE_SOURCE
 #include "fileio.h"
 #include "db.h"
 #include "compat.h"
 #include "config.h"
 #include "entry.h"
+#include "fd.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -51,7 +50,7 @@ tupid_t create_dir_file(tupid_t dt, const char *path)
 	return -1;
 }
 
-tupid_t update_symlink_fileat(tupid_t dt, int dfd, const char *file,
+tupid_t update_symlink_fileat(tupid_t dt, fd_t dfd, const char *file,
 			      time_t mtime, int force)
 {
 	int rc;
@@ -72,7 +71,7 @@ tupid_t update_symlink_fileat(tupid_t dt, int dfd, const char *file,
 		}
 	}
 
-	rc = readlinkat(dfd, file, linkname, sizeof(linkname));
+	rc = fd_readlinkat(dfd, file, linkname, sizeof(linkname));
 	if(rc < 0) {
 		fprintf(stderr, "readlinkat: ");
 		perror(file);
@@ -108,18 +107,17 @@ tupid_t update_symlink_fileat(tupid_t dt, int dfd, const char *file,
 
 tupid_t tup_file_mod(tupid_t dt, const char *file)
 {
-	int fd;
+	fd_t fd;
 	struct stat buf;
 
-	fd = tup_db_open_tupid(dt);
-	if(fd < 0)
+	if(tup_db_open_tupid(dt, &fd))
 		return -1;
-	if(fstatat(fd, file, &buf, AT_SYMLINK_NOFOLLOW) != 0) {
+	if(fd_lstatat(fd, file, &buf) != 0) {
 		fprintf(stderr, "tup error: tup_file_mod() fstatat failed.\n");
 		perror(file);
 		return -1;
 	}
-	close(fd);
+	fd_close(fd);
 	return tup_file_mod_mtime(dt, file, buf.st_mtime, 1);
 }
 
