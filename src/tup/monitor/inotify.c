@@ -89,7 +89,7 @@ static char queue_buf[(sizeof(struct inotify_event) + 16) * 1024];
 static int queue_start = 0;
 static int queue_end = 0;
 static struct monitor_event *queue_last_e = NULL;
-static LIST_HEAD(moved_from_list);
+static struct list_head moved_from_list = LIST_HEAD_INIT(moved_from_list);
 
 int monitor_supported(void)
 {
@@ -764,7 +764,7 @@ static struct moved_from_event *add_from_event(struct monitor_event *m)
 static struct moved_from_event *check_from_events(struct inotify_event *e)
 {
 	struct moved_from_event *mfe;
-	list_for_each_entry(mfe, &moved_from_list, list) {
+	list_for_each_entry(struct moved_from_event, mfe, &moved_from_list, list) {
 		if(mfe->m->e.cookie == e->cookie) {
 			mfe->m->e.mask = 0;
 			list_del(&mfe->list);
@@ -911,10 +911,10 @@ static int dump_dircache(void)
 
 		tent = tup_entry_find(dc->dt_node.tupid);
 		if(!tent) {
-			printf("  [31mwd %lli: [%lli] not found[0m\n", dc->wd_node.tupid, dc->dt_node.tupid);
+			printf("  [31mwd %"PRI_TUPID": [%"PRI_TUPID"] not found[0m\n", dc->wd_node.tupid, dc->dt_node.tupid);
 			rc = -1;
 		} else {
-			printf("  wd %lli: [%lli] ", dc->wd_node.tupid, dc->dt_node.tupid);
+			printf("  wd %"PRI_TUPID": [%"PRI_TUPID"] ", dc->wd_node.tupid, dc->dt_node.tupid);
 			print_tup_entry(tent);
 			printf("\n");
 		}

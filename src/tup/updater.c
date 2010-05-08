@@ -55,10 +55,6 @@ static int vardict_fd;
 static int warnings;
 
 static int sig_quit = 0;
-static struct sigaction sigact = {
-	.sa_handler = sighandler,
-	.sa_flags = SA_RESTART,
-};
 
 static pthread_mutex_t db_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -280,7 +276,7 @@ static int process_create_nodes(void)
 
 	if(create_graph(&g, TUP_NODE_DIR) < 0)
 		return -1;
-	if(tup_db_select_node_by_flags(add_file_cb, &g, TUP_FLAGS_CREATE) < 0)
+	if(tup_db_select_node_by_flags(&add_file_cb, &g, TUP_FLAGS_CREATE) < 0)
 		return -1;
 	if(build_graph(&g) < 0)
 		return -1;
@@ -291,7 +287,7 @@ static int process_create_nodes(void)
 	}
 	tup_db_begin();
 	/* create_work must always use only 1 thread since no locking is done */
-	rc = execute_graph(&g, 0, 1, create_work);
+	rc = execute_graph(&g, 0, 1, &create_work);
 	if(rc == 0)
 		rc = delete_files(&g);
 	if(rc == 0) {
@@ -312,6 +308,7 @@ static int process_update_nodes(void)
 {
 	struct graph g;
 	int rc;
+	struct sigaction sigact;
 
 	if(create_graph(&g, TUP_NODE_CMD) < 0)
 		return -1;
@@ -324,9 +321,13 @@ static int process_update_nodes(void)
 	} else {
 		tup_main_progress("No commands to execute.\n");
 	}
+
+	sigact.sa_handler = &sighandler;
+	sigact.sa_flags = SA_RESTART;
 	sigemptyset(&sigact.sa_mask);
 	sigaction(SIGINT, &sigact, NULL);
 	sigaction(SIGTERM, &sigact, NULL);
+
 	tup_db_begin();
 	vardict_fd = openat(tup_top_fd(), TUP_VARDICT_FILE, O_RDONLY);
 	if(vardict_fd < 0) {
@@ -431,18 +432,18 @@ static int build_graph(struct graph *g)
 	while(!list_empty(&g->plist)) {
 		cur = list_entry(g->plist.next, struct node, list);
 		if(cur->state == STATE_INITIALIZED) {
-			DEBUGP("find deps for node: %lli\n", cur->tnode.tupid);
+			DEBUGP("find deps for node: %"PRI_TUPID"\n", cur->tnode.tupid);
 			g->cur = cur;
 			if(tup_db_select_node_by_link(add_file_cb, g, cur->tnode.tupid) < 0)
 				return -1;
 			cur->state = STATE_PROCESSING;
 		} else if(cur->state == STATE_PROCESSING) {
-			DEBUGP("remove node from stack: %lli\n", cur->tnode.tupid);
+			DEBUGP("remove node from stack: %"PRI_TUPID"\n", cur->tnode.tupid);
 			list_del(&cur->list);
 			list_add_tail(&cur->list, &g->node_list);
 			cur->state = STATE_FINISHED;
 		} else if(cur->state == STATE_FINISHED) {
-			fprintf(stderr, "tup internal error: STATE_FINISHED node %lli in plist\n", cur->tnode.tupid);
+			fprintf(stderr, "tup internal error: STATE_FINISHED node %"PRI_TUPID" in plist\n", cur->tnode.tupid);
 			tup_db_print(stderr, cur->tnode.tupid);
 			return -1;
 		}
@@ -469,7 +470,7 @@ edge_create:
 		 * but it is easy to check before going through the graph.
 		 */
 		fprintf(stderr, "Error: Circular dependency detected! "
-			"Last edge was: %lli -> %lli\n",
+			"Last edge was: %"PRI_TUPID" -> %"PRI_TUPID"\n",
 			g->cur->tnode.tupid, tent->tnode.tupid);
 		return -1;
 	}
@@ -561,7 +562,7 @@ static int execute_graph(struct graph *g, int keep_going, int jobs,
 	close(tupfd);
 
 	root = list_entry(g->node_list.next, struct node, list);
-	DEBUGP("root node: %lli\n", root->tnode.tupid);
+	DEBUGP("root node: %"PRI_TUPID"\n", root->tnode.tupid);
 	list_del(&root->list);
 	pop_node(g, root);
 	remove_node(g, root);
@@ -569,7 +570,7 @@ static int execute_graph(struct graph *g, int keep_going, int jobs,
 	while(!list_empty(&g->plist) && !sig_quit) {
 		struct node *n;
 		n = list_entry(g->plist.next, struct node, list);
-		DEBUGP("cur node: %lli [%i]\n", n->tnode.tupid, n->incoming_count);
+		DEBUGP("cur node: %"PRI_TUPID" [%i]\n", n->tnode.tupid, n->incoming_count);
 		if(n->incoming_count) {
 			/* Here STATE_FINISHED means we're on the node_list,
 			 * therefore not ready for processing.
@@ -642,12 +643,12 @@ keep_going:
 				struct node *n;
 				fprintf(stderr, "fatal tup error: Graph is not empty after execution. This likely indicates a circular dependency.\n");
 				fprintf(stderr, "Node list:\n");
-				list_for_each_entry(n, &g->node_list, list) {
-					fprintf(stderr, " Node[%lli]: %s\n", n->tnode.tupid, n->tent->name.s);
+				list_for_each_entry(struct node, n, &g->node_list, list) {
+					fprintf(stderr, " Node[%"PRI_TUPID"]: %s\n", n->tnode.tupid, n->tent->name.s);
 				}
 				fprintf(stderr, "plist:\n");
-				list_for_each_entry(n, &g->plist, list) {
-					fprintf(stderr, " Plist[%lli]: %s\n", n->tnode.tupid, n->tent->name.s);
+				list_for_each_entry(struct node, n, &g->plist, list) {
+					fprintf(stderr, " Plist[%"PRI_TUPID"]: %s\n", n->tnode.tupid, n->tent->name.s);
 				}
 			}
 		}
@@ -685,7 +686,7 @@ static void *create_work(void *arg)
 
 		if(n->tent->type == TUP_NODE_DIR) {
 			if(n->already_used) {
-				printf("Already parsed[%lli]: '%s'\n", n->tnode.tupid, n->tent->name.s);
+				printf("Already parsed[%"PRI_TUPID"]: '%s'\n", n->tnode.tupid, n->tent->name.s);
 				rc = 0;
 			} else {
 				rc = parse(n, g);
@@ -696,7 +697,7 @@ static void *create_work(void *arg)
 			  n->tent->type == TUP_NODE_CMD) {
 			rc = 0;
 		} else {
-			fprintf(stderr, "Error: Unknown node type %i with ID %lli named '%s' in create graph.\n", n->tent->type, n->tnode.tupid, n->tent->name.s);
+			fprintf(stderr, "Error: Unknown node type %i with ID %"PRI_TUPID" named '%s' in create graph.\n", n->tent->type, n->tnode.tupid, n->tent->name.s);
 			rc = -1;
 		}
 		if(tup_db_unflag_create(n->tnode.tupid) < 0)
@@ -885,10 +886,12 @@ static int update(struct node *n, struct server *s)
 		goto err_close_dfd;
 	}
 	if(pid == 0) {
-		struct sigaction sa = {
-			.sa_handler = SIG_IGN,
-			.sa_flags = SA_RESETHAND | SA_RESTART,
-		};
+		/* Child */
+		struct sigaction sa;
+
+		memset(&sa, 0, sizeof(sa));
+	        sa.sa_handler = SIG_IGN;
+		sa.sa_flags = SA_RESETHAND | SA_RESTART;
 
 		tup_lock_close();
 		sigemptyset(&sa.sa_mask);
@@ -940,9 +943,9 @@ static int update(struct node *n, struct server *s)
 
 err_cmd_failed:
 	if(exit_status == -1)
-		fprintf(stderr, " *** Command %lli failed: %s\n", n->tnode.tupid, name);
+		fprintf(stderr, " *** Command %"PRI_TUPID" failed: %s\n", n->tnode.tupid, name);
 	else
-		fprintf(stderr, " *** Command %lli failed with return value %i: %s\n", n->tnode.tupid, exit_status, name);
+		fprintf(stderr, " *** Command %"PRI_TUPID" failed with return value %i: %s\n", n->tnode.tupid, exit_status, name);
 err_close_dfd:
 	close(dfd);
 err_out:

@@ -107,7 +107,7 @@ struct half_entry {
 
 static sqlite3 *tup_db = NULL;
 static sqlite3_stmt *stmts[DB_NUM_STATEMENTS];
-static LIST_HEAD(ghost_list);
+static struct list_head ghost_list = LIST_HEAD_INIT(ghost_list);
 static int tup_db_var_changed = 0;
 static int sql_debug = 0;
 static int reclaim_ghost_debug = 0;
@@ -303,7 +303,15 @@ static int version_check(void)
 			}
 			if(tup_db_config_set_int("db_version", 2) < 0)
 				return -1;
-			fprintf(stderr, "WARNING: Tup database updated to version 2.\nThe link table has a new column (style) to annotate the origin of the link. This is used to differentiate between links specified in Tupfiles vs. links determined automatically via wrapped command execution, so the links can be removed at appropriate times. Also, a new node type (TUP_NODE_GENERATED==4) has been added. All files created from commands have been updated to this new type. This is used so you can't try to create a command to write to a base source file. All Tupfiles will be re-parsed on the next update in order to generate the new links. If you have any problems, it might be easiest to re-checkout your code and start anew. Admittedly I haven't tested the conversion completely.\n");
+			fprintf(stderr, "WARNING: Tup database updated to version 2.\n");
+			fprintf(stderr, " The link table has a new column (style) to annotate the origin of the link."); 
+			fprintf(stderr, " This is used to differentiate between links specified in Tupfiles vs. links determined automatically via wrapped command execution, so the links can be removed at appropriate times.");
+			fprintf(stderr, " Also, a new node type (TUP_NODE_GENERATED==4) has been added.");
+			fprintf(stderr, " All files created from commands have been updated to this new type.");
+			fprintf(stderr, " This is used so you can't try to create a command to write to a base source file.");
+			fprintf(stderr, " All Tupfiles will be re-parsed on the next update in order to generate the new links.");
+			fprintf(stderr, " If you have any problems, it might be easiest to re-checkout your code and start anew.");
+			fprintf(stderr, " Admittedly I haven't tested the conversion completely.\n");
 
 			fprintf(stderr, "NOTE: If you are using the file monitor, you probably want to restart it.\n");
 		case 2:
@@ -721,7 +729,7 @@ int tup_db_fill_tup_entry(tupid_t tupid, struct tup_entry *tent)
 	const char *name;
 	int len;
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli][0m\n", s, tupid);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID"][0m\n", s, tupid);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -737,7 +745,7 @@ int tup_db_fill_tup_entry(tupid_t tupid, struct tup_entry *tent)
 
 	dbrc = sqlite3_step(*stmt);
 	if(dbrc == SQLITE_DONE) {
-		fprintf(stderr, "tup error: Unable to find node entry for tupid: %lli\n", tupid);
+		fprintf(stderr, "tup error: Unable to find node entry for tupid: %"PRI_TUPID"\n", tupid);
 		goto out_reset;
 	}
 	if(dbrc != SQLITE_ROW) {
@@ -859,7 +867,7 @@ int tup_db_select_node_dir(int (*callback)(void *, struct tup_entry *, int style
 	sqlite3_stmt **stmt = &stmts[DB_SELECT_NODE_DIR];
 	static char s[] = "select id from node where dir=?";
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli][0m\n", s, dt);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID"][0m\n", s, dt);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -920,7 +928,7 @@ int tup_db_select_node_dir_glob(int (*callback)(void *, struct tup_entry *),
 	sqlite3_stmt **stmt = &stmts[DB_SELECT_NODE_DIR_GLOB];
 	static char s[] = "select id, name, type, sym, mtime from node where dir=? and (type=? or type=?) and name glob ?";
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli, %i, %i, '%s'][0m\n", s, dt, TUP_NODE_FILE, TUP_NODE_GENERATED, glob);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID", %i, %i, '%s'][0m\n", s, dt, TUP_NODE_FILE, TUP_NODE_GENERATED, glob);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -1034,7 +1042,7 @@ int delete_node(tupid_t tupid)
 		return -1;
 	}
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli][0m\n", s, tupid);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID"][0m\n", s, tupid);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -1063,7 +1071,9 @@ int delete_node(tupid_t tupid)
 
 int tup_db_delete_dir(tupid_t dt)
 {
-	LIST_HEAD(subdir_list);
+	struct list_head subdir_list;
+
+	INIT_LIST_HEAD(&subdir_list);
 
 	if(get_dir_entries(dt, &subdir_list) < 0)
 		return -1;
@@ -1083,7 +1093,9 @@ int tup_db_delete_dir(tupid_t dt)
 static int recurse_delete_ghost_tree(tupid_t tupid, struct list_head *list)
 {
 	struct half_entry *he;
-	LIST_HEAD(subdir_list);
+	struct list_head subdir_list;
+
+	INIT_LIST_HEAD(&subdir_list);
 
 	if(get_dir_entries(tupid, &subdir_list) < 0)
 		return -1;
@@ -1107,7 +1119,7 @@ static int recurse_delete_ghost_tree(tupid_t tupid, struct list_head *list)
 	if(tup_db_delete_links(tupid) < 0)
 		return -1;
 
-	list_for_each_entry(he, &subdir_list, list) {
+	list_for_each_entry(struct half_entry, he, &subdir_list, list) {
 		if(he->type != TUP_NODE_GHOST) {
 			fprintf(stderr, "tup internal error: Why does a node of type %i have a ghost dir?\n", he->type);
 			tup_db_print(stderr, he->tupid);
@@ -1124,14 +1136,16 @@ static int recurse_delete_ghost_tree(tupid_t tupid, struct list_head *list)
 
 int tup_db_modify_dir(tupid_t dt)
 {
-	LIST_HEAD(subdir_list);
+	struct list_head subdir_list;
 	int rc;
 	sqlite3_stmt **stmt = &stmts[DB_MODIFY_DIR];
 	static char s[] = "insert or ignore into modify_list select id from node where dir=? and type!=?";
 
+	INIT_LIST_HEAD(&subdir_list);
+
 	if(tup_db_add_create_list(dt) < 0)
 		return -1;
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli, %i][0m\n", s, dt, TUP_NODE_DIR);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID", %i][0m\n", s, dt, TUP_NODE_DIR);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -1140,7 +1154,7 @@ int tup_db_modify_dir(tupid_t dt)
 		}
 	}
 
-	if(sqlite3_bind_int(*stmt, 1, dt) != 0) {
+	if(sqlite3_bind_int64(*stmt, 1, dt) != 0) {
 		fprintf(stderr, "SQL bind error: %s\n", sqlite3_errmsg(tup_db));
 		return -1;
 	}
@@ -1190,7 +1204,7 @@ int tup_db_open_tupid(tupid_t tupid)
 	if(tupid == 1) {
 		return dup(tup_top_fd());
 	}
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli][0m\n", s, tupid);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID"][0m\n", s, tupid);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -1263,7 +1277,7 @@ int tup_db_is_root_node(tupid_t tupid)
 	sqlite3_stmt **stmt = &stmts[DB_IS_ROOT_NODE];
 	static char s[] = "select type from node where id=?";
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli][0m\n", s, tupid);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID"][0m\n", s, tupid);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -1279,7 +1293,7 @@ int tup_db_is_root_node(tupid_t tupid)
 
 	dbrc = sqlite3_step(*stmt);
 	if(dbrc == SQLITE_DONE) {
-		fprintf(stderr, "tup error: tup_db_is_root_node() called on node (%lli) that doesn't exist?\n", tupid);
+		fprintf(stderr, "tup error: tup_db_is_root_node() called on node (%"PRI_TUPID") that doesn't exist?\n", tupid);
 		rc = -1;
 		goto out_reset;
 	}
@@ -1310,7 +1324,9 @@ int tup_db_change_node(tupid_t tupid, const char *new_name, tupid_t new_dt)
 	struct tup_entry *tent;
 	sqlite3_stmt **stmt = &stmts[DB_CHANGE_NODE_NAME];
 	static char s[] = "update node set name=?, dir=? where id=?";
-	LIST_HEAD(tmp_ghost_list);
+	struct list_head tmp_ghost_list;
+
+	INIT_LIST_HEAD(&tmp_ghost_list);
 
 	if(node_select(new_dt, new_name, -1, &tent) < 0) {
 		return -1;
@@ -1320,13 +1336,13 @@ int tup_db_change_node(tupid_t tupid, const char *new_name, tupid_t new_dt)
 			if(recurse_delete_ghost_tree(tent->tnode.tupid, &tmp_ghost_list) < 0)
 				return -1;
 		} else {
-			fprintf(stderr, "Error: Attempting to overwrite node '%s' in dir %lli in tup_db_change_node()\n", new_name, new_dt);
+			fprintf(stderr, "Error: Attempting to overwrite node '%s' in dir %"PRI_TUPID" in tup_db_change_node()\n", new_name, new_dt);
 			tup_db_print(stderr, new_dt);
 			return -1;
 		}
 	}
 
-	if(sql_debug) fprintf(stderr, "%s [37m['%s', %lli, %lli][0m\n", s, new_name, new_dt, tupid);
+	if(sql_debug) fprintf(stderr, "%s [37m['%s', %"PRI_TUPID", %"PRI_TUPID"][0m\n", s, new_name, new_dt, tupid);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -1392,7 +1408,7 @@ int tup_db_set_name(tupid_t tupid, const char *new_name)
 		return 0;
 	}
 
-	if(sql_debug) fprintf(stderr, "%s [37m['%s', %lli][0m\n", s, new_name, tupid);
+	if(sql_debug) fprintf(stderr, "%s [37m['%s', %"PRI_TUPID"][0m\n", s, new_name, tupid);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -1436,7 +1452,7 @@ int tup_db_set_type(struct tup_entry *tent, int type)
 	sqlite3_stmt **stmt = &stmts[DB_SET_TYPE];
 	static char s[] = "update node set type=? where id=?";
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%i, %lli][0m\n", s, type, tent->tnode.tupid);
+	if(sql_debug) fprintf(stderr, "%s [37m[%i, %"PRI_TUPID"][0m\n", s, type, tent->tnode.tupid);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -1474,7 +1490,7 @@ int tup_db_set_sym(struct tup_entry *tent, tupid_t sym)
 	sqlite3_stmt **stmt = &stmts[DB_SET_SYM];
 	static char s[] = "update node set sym=? where id=?";
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli, %lli][0m\n", s, sym, tent->tnode.tupid);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID", %"PRI_TUPID"][0m\n", s, sym, tent->tnode.tupid);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -1515,7 +1531,7 @@ int tup_db_set_mtime(struct tup_entry *tent, time_t mtime)
 	sqlite3_stmt **stmt = &stmts[DB_SET_MTIME];
 	static char s[] = "update node set mtime=? where id=?";
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%li, %lli][0m\n", s, mtime, tent->tnode.tupid);
+	if(sql_debug) fprintf(stderr, "%s [37m[%li, %"PRI_TUPID"][0m\n", s, mtime, tent->tnode.tupid);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -1551,7 +1567,7 @@ int tup_db_print(FILE *stream, tupid_t tupid)
 {
 	int rc;
 
-	fprintf(stream, " - [%lli] ", tupid);
+	fprintf(stream, " - [%"PRI_TUPID"] ", tupid);
 	rc = db_print(stream, tupid);
 	fprintf(stream, "\n");
 	return rc;
@@ -1589,7 +1605,7 @@ static int generated_nodelist_len(tupid_t dt)
 	sqlite3_stmt **stmt = &stmts[_DB_NODELIST_LEN];
 	static char s[] = "select sum(length(name) + 2) from node where dir=? and type=?";
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli, %i][0m\n", s, dt, TUP_NODE_GENERATED);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID", %i][0m\n", s, dt, TUP_NODE_GENERATED);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -1639,7 +1655,7 @@ static int get_generated_nodelist(char *dest, tupid_t dt, struct rb_root *tree,
 	char *p;
 	int len;
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli, %i][0m\n", s, dt, TUP_NODE_GENERATED);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID", %i][0m\n", s, dt, TUP_NODE_GENERATED);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -1708,7 +1724,7 @@ static int db_print(FILE *stream, tupid_t tupid)
 	if(tupid == 1) {
 		return 0;
 	}
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli][0m\n", s, tupid);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID"][0m\n", s, tupid);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -1811,7 +1827,7 @@ int tup_db_add_dir_create_list(tupid_t tupid)
 	sqlite3_stmt **stmt = &stmts[DB_ADD_DIR_CREATE_LIST];
 	static char s[] = "insert or ignore into create_list select dir from node where id=?";
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli][0m\n", s, tupid);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID"][0m\n", s, tupid);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -1845,7 +1861,7 @@ int tup_db_add_create_list(tupid_t tupid)
 	sqlite3_stmt **stmt = &stmts[DB_ADD_CREATE_LIST];
 	static char s[] = "insert or ignore into create_list values(?)";
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli][0m\n", s, tupid);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID"][0m\n", s, tupid);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -1879,7 +1895,7 @@ int tup_db_add_modify_list(tupid_t tupid)
 	sqlite3_stmt **stmt = &stmts[DB_ADD_MODIFY_LIST];
 	static char s[] = "insert or ignore into modify_list values(?)";
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli][0m\n", s, tupid);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID"][0m\n", s, tupid);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -1914,7 +1930,7 @@ int tup_db_in_create_list(tupid_t tupid)
 	sqlite3_stmt **stmt = &stmts[DB_IN_CREATE_LIST];
 	static char s[] = "select id from create_list where id=?";
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli][0m\n", s, tupid);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID"][0m\n", s, tupid);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -1957,7 +1973,7 @@ int tup_db_in_modify_list(tupid_t tupid)
 	sqlite3_stmt **stmt = &stmts[DB_IN_MODIFY_LIST];
 	static char s[] = "select id from modify_list where id=?";
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli][0m\n", s, tupid);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID"][0m\n", s, tupid);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -1999,7 +2015,7 @@ int tup_db_unflag_create(tupid_t tupid)
 	sqlite3_stmt **stmt = &stmts[DB_UNFLAG_CREATE];
 	static char s[] = "delete from create_list where id=?";
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli][0m\n", s, tupid);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID"][0m\n", s, tupid);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -2033,7 +2049,7 @@ int tup_db_unflag_modify(tupid_t tupid)
 	sqlite3_stmt **stmt = &stmts[DB_UNFLAG_MODIFY];
 	static char s[] = "delete from modify_list where id=?";
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli][0m\n", s, tupid);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID"][0m\n", s, tupid);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -2068,7 +2084,7 @@ static int get_recurse_dirs(tupid_t dt, struct list_head *list)
 	sqlite3_stmt **stmt = &stmts[_DB_GET_RECURSE_DIRS];
 	static char s[] = "select id from node where dir=? and type=?";
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli, %i][0m\n", s, dt, TUP_NODE_DIR);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID", %i][0m\n", s, dt, TUP_NODE_DIR);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -2126,7 +2142,7 @@ static int get_dir_entries(tupid_t dt, struct list_head *list)
 	sqlite3_stmt **stmt = &stmts[_DB_GET_DIR_ENTRIES];
 	static char s[] = "select id, type from node where dir=?";
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli][0m\n", s, dt);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID"][0m\n", s, dt);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -2217,7 +2233,7 @@ int tup_db_create_unique_link(tupid_t a, tupid_t b, struct rb_root *deltree,
 		return 0;
 	}
 	/* Otherwise, someone else got the girl. Err, output file. */
-	fprintf(stderr, "Error: Unable to create a unique link from %lli to %lli because the destination is already linked to by node %lli.\n", a, b, incoming);
+	fprintf(stderr, "Error: Unable to create a unique link from %"PRI_TUPID" to %"PRI_TUPID" because the destination is already linked to by node %"PRI_TUPID".\n", a, b, incoming);
 	tup_db_print(stderr, a);
 	tup_db_print(stderr, b);
 	return -1;
@@ -2229,7 +2245,7 @@ int tup_db_link_exists(tupid_t a, tupid_t b)
 	sqlite3_stmt **stmt = &stmts[DB_LINK_EXISTS];
 	static char s[] = "select to_id from link where from_id=? and to_id=?";
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli, %lli][0m\n", s, a, b);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID", %"PRI_TUPID"][0m\n", s, a, b);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -2271,7 +2287,7 @@ int tup_db_link_style(tupid_t a, tupid_t b, int *style)
 
 	*style = -1;
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli, %lli][0m\n", s, a, b);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID", %"PRI_TUPID"][0m\n", s, a, b);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -2319,7 +2335,7 @@ int tup_db_get_incoming_link(tupid_t tupid, tupid_t *incoming)
 
 	*incoming = -1;
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli][0m\n", s, tupid);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID"][0m\n", s, tupid);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -2351,7 +2367,7 @@ int tup_db_get_incoming_link(tupid_t tupid, tupid_t *incoming)
 			fprintf(stderr, "SQL step error: %s\n", sqlite3_errmsg(tup_db));
 			return -1;
 		}
-		fprintf(stderr, "tup error: Node %lli is supposed to only have one incoming link, but multiple were found. The database is probably in a bad state. Sadness :(\n", tupid);
+		fprintf(stderr, "tup error: Node %"PRI_TUPID" is supposed to only have one incoming link, but multiple were found. The database is probably in a bad state. Sadness :(\n", tupid);
 		rc = -1;
 		goto out_reset;
 	}
@@ -2374,7 +2390,7 @@ int tup_db_delete_links(tupid_t tupid)
 	if(add_ghost_links(tupid) < 0)
 		return -1;
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli, %lli][0m\n", s, tupid, tupid);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID", %"PRI_TUPID"][0m\n", s, tupid, tupid);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -2412,7 +2428,7 @@ int tup_db_dirtype_to_tree(tupid_t dt, struct rb_root *tree, int *count, int typ
 	sqlite3_stmt **stmt = &stmts[DB_DIRTYPE_TO_TREE];
 	static char s[] = "select id from node where dir=? and type=?";
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli, %i][0m\n", s, dt, type);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID", %i][0m\n", s, dt, type);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -2465,7 +2481,7 @@ int tup_db_modify_cmds_by_output(tupid_t output, int *modified)
 	sqlite3_stmt **stmt = &stmts[DB_MODIFY_CMDS_BY_OUTPUT];
 	static char s[] = "insert or ignore into modify_list select from_id from link where to_id=?";
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli][0m\n", s, output);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID"][0m\n", s, output);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -2502,7 +2518,7 @@ int tup_db_modify_cmds_by_input(tupid_t input)
 	sqlite3_stmt **stmt = &stmts[DB_MODIFY_CMDS_BY_INPUT];
 	static char s[] = "insert or ignore into modify_list select to_id from link, node where from_id=? and to_id=id and type=?";
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli, %i][0m\n", s, input, TUP_NODE_CMD);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID", %i][0m\n", s, input, TUP_NODE_CMD);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -2540,7 +2556,7 @@ int tup_db_set_dependent_dir_flags(tupid_t tupid)
 	sqlite3_stmt **stmt = &stmts[DB_SET_DEPENDENT_DIR_FLAGS];
 	static char s[] = "insert or ignore into create_list select to_id from link, node where from_id=? and to_id=id and type=?";
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli, %i][0m\n", s, tupid, TUP_NODE_DIR);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID", %i][0m\n", s, tupid, TUP_NODE_DIR);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -2581,7 +2597,7 @@ int tup_db_select_node_by_link(int (*callback)(void *, struct tup_entry *,
 	sqlite3_stmt **stmt = &stmts[DB_SELECT_NODE_BY_LINK];
 	static char s[] = "select to_id, style from link where from_id=?";
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli][0m\n", s, tupid);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID"][0m\n", s, tupid);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -2749,7 +2765,7 @@ int tup_db_config_set_int64(const char *lval, sqlite3_int64 x)
 	sqlite3_stmt **stmt = &stmts[DB_CONFIG_SET_INT64];
 	static char s[] = "insert or replace into config values(?, ?)";
 
-	if(sql_debug) fprintf(stderr, "%s [37m['%s', %lli][0m\n", s, lval, x);
+	if(sql_debug) fprintf(stderr, "%s [37m['%s', %"PRI_TUPID"][0m\n", s, lval, x);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -2912,7 +2928,7 @@ int tup_db_set_var(tupid_t tupid, const char *value)
 	sqlite3_stmt **stmt = &stmts[DB_SET_VAR];
 	static char s[] = "insert or replace into var values(?, ?)";
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli, '%s'][0m\n", s, tupid, value);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID", '%s'][0m\n", s, tupid, value);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -2954,7 +2970,7 @@ static struct var_entry *get_var_id(struct tup_entry *tent,
 	sqlite3_stmt **stmt = &stmts[_DB_GET_VAR_ID];
 	static char s[] = "select value, length(value) from var where var.id=?";
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli][0m\n", s, tent->tnode.tupid);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID"][0m\n", s, tent->tnode.tupid);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -2970,7 +2986,7 @@ static struct var_entry *get_var_id(struct tup_entry *tent,
 
 	dbrc = sqlite3_step(*stmt);
 	if(dbrc == SQLITE_DONE) {
-		fprintf(stderr,"Error: Variable id %lli not found in .tup/db.\n", tent->tnode.tupid);
+		fprintf(stderr,"Error: Variable id %"PRI_TUPID" not found in .tup/db.\n", tent->tnode.tupid);
 		goto out_reset;
 	}
 	if(dbrc != SQLITE_ROW) {
@@ -3052,7 +3068,7 @@ int tup_db_get_var_id_alloc(tupid_t tupid, char **dest)
 	sqlite3_stmt **stmt = &stmts[DB_GET_VAR_ID_ALLOC];
 	static char s[] = "select value, length(value) from var where var.id=?";
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli][0m\n", s, tupid);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID"][0m\n", s, tupid);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -3068,7 +3084,7 @@ int tup_db_get_var_id_alloc(tupid_t tupid, char **dest)
 
 	dbrc = sqlite3_step(*stmt);
 	if(dbrc == SQLITE_DONE) {
-		fprintf(stderr,"Error: Variable id %lli not found in .tup/db.\n", tupid);
+		fprintf(stderr,"Error: Variable id %"PRI_TUPID" not found in .tup/db.\n", tupid);
 		goto out_reset;
 	}
 	if(dbrc != SQLITE_ROW) {
@@ -3121,7 +3137,7 @@ tupid_t tup_db_write_var(const char *var, int varlen, int fd)
 	static char s[] = "select var.id, value, length(value) from var, node where node.dir=? and node.name=? and node.id=var.id";
 	tupid_t tupid = -1;
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli, '%.*s'][0m\n", s, tupid, varlen, var);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID", '%.*s'][0m\n", s, tupid, varlen, var);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -3518,7 +3534,7 @@ static int get_output_tree(tupid_t cmdid, struct rb_root *output_tree)
 	sqlite3_stmt **stmt = &stmts[_DB_GET_OUTPUT_TREE];
 	static char s[] = "select to_id from link where from_id=?";
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli][0m\n", s, cmdid);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID"][0m\n", s, cmdid);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -3549,7 +3565,7 @@ static int get_output_tree(tupid_t cmdid, struct rb_root *output_tree)
 		rc = tupid_tree_add(output_tree, tupid);
 
 		if(rc < 0) {
-			fprintf(stderr, "tup error: get_output_tree() unable to insert tupid %lli into tree - duplicate output link in the database for command %lli?\n", tupid, cmdid);
+			fprintf(stderr, "tup error: get_output_tree() unable to insert tupid %"PRI_TUPID" into tree - duplicate output link in the database for command %"PRI_TUPID"?\n", tupid, cmdid);
 			break;
 		}
 	}
@@ -3570,7 +3586,7 @@ static int get_links(tupid_t cmdid, struct rb_root *sticky_tree,
 	sqlite3_stmt **stmt = &stmts[_DB_GET_LINKS];
 	static char s[] = "select from_id, style from link where to_id=?";
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli][0m\n", s, cmdid);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID"][0m\n", s, cmdid);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -3608,7 +3624,7 @@ static int get_links(tupid_t cmdid, struct rb_root *sticky_tree,
 		}
 
 		if(rc < 0) {
-			fprintf(stderr, "tup error: get_links() unable to insert tupid %lli into tree - duplicate input link in the database for command %lli?\n", tupid, cmdid);
+			fprintf(stderr, "tup error: get_links() unable to insert tupid %"PRI_TUPID" into tree - duplicate input link in the database for command %"PRI_TUPID"?\n", tupid, cmdid);
 			break;
 		}
 	}
@@ -3631,7 +3647,7 @@ static int compare_list_tree(struct list_head *a, struct rb_root *b, void *data,
 
 	nb = rb_first(b);
 
-	list_for_each_entry(tent, a, list) {
+	list_for_each_entry(struct tup_entry, tent, a, list) {
 		ttb = tupid_tree_search(b, tent->tnode.tupid);
 		if(!ttb) {
 			if(extra_a && extra_a(tent->tnode.tupid, data) < 0)
@@ -3711,7 +3727,7 @@ static int extra_output(tupid_t tupid, void *data)
 	if(!(aod->output_error & 1)) {
 		aod->output_error |= 1;
 		fprintf(stderr, "tup error: Unspecified output files - A command is writing to files that you    didn't specify in the Tupfile. You should add them so tup knows what to expect.\n");
-		fprintf(stderr, " -- Command ID: %lli\n", aod->cmdid);
+		fprintf(stderr, " -- Command ID: %"PRI_TUPID"\n", aod->cmdid);
 		/* Return success here so we can display all errant outputs.
 		 * Actual check is in tup_db_check_actual_outputs().
 		 */
@@ -3725,7 +3741,7 @@ static int extra_output(tupid_t tupid, void *data)
 	 * was created in the wrong spot.
 	 */
 	tup_db_modify_cmds_by_output(tent->tnode.tupid, NULL);
-	fprintf(stderr, "[35m -- Delete: %s at dir %lli[0m\n",
+	fprintf(stderr, "[35m -- Delete: %s at dir %"PRI_TUPID"[0m\n",
 		tent->name.s, tent->dt);
 	delete_file(tent->dt, tent->name.s);
 	return 0;
@@ -3739,7 +3755,7 @@ static int missing_output(tupid_t tupid, void *data)
 	if(tup_entry_add(tupid, &tent) < 0)
 		return -1;
 
-	fprintf(stderr, "Error: Expected to write to file '%s' from cmd %lli but didn't\n", tent->name.s, aod->cmdid);
+	fprintf(stderr, "Error: Expected to write to file '%s' from cmd %"PRI_TUPID" but didn't\n", tent->name.s, aod->cmdid);
 
 	if(!(aod->output_error & 2)) {
 		aod->output_error |= 2;
@@ -3753,10 +3769,10 @@ static int missing_output(tupid_t tupid, void *data)
 int tup_db_check_actual_outputs(tupid_t cmdid, struct list_head *writelist)
 {
 	struct rb_root output_tree = {NULL};
-	struct actual_output_data aod = {
-		.cmdid = cmdid,
-		.output_error = 0,
-	};
+	struct actual_output_data aod;
+
+	aod.cmdid = cmdid;
+	aod.output_error = 0;
 
 	if(get_output_tree(cmdid, &output_tree) < 0)
 		return -1;
@@ -3813,10 +3829,10 @@ int tup_db_write_inputs(tupid_t cmdid, struct rb_root *input_tree)
 {
 	struct rb_root sticky_tree = {NULL};
 	struct rb_root normal_tree = {NULL};
-	struct write_input_data wid = {
-		.cmdid = cmdid,
-		.normal_tree = &normal_tree,
-	};
+	struct write_input_data wid;
+
+	wid.cmdid = cmdid;
+	wid.normal_tree = &normal_tree;
 
 	if(get_links(cmdid, &sticky_tree, &normal_tree) < 0)
 		return -1;
@@ -3849,7 +3865,7 @@ static int new_input(tupid_t tupid, void *data)
 	if(tent->type == TUP_NODE_GENERATED) {
 		if(!aid->input_error) {
 			fprintf(stderr, "tup error: Missing input dependency - a file was read from, and was not         specified as an input link for the command. This is an issue because the file   was created from another command, and without the input link the commands may   execute out of order. You should add this file as an input, since it is         possible this could randomly break in the future.\n");
-			fprintf(stderr, " -- Command ID: %lli\n", aid->cmdid);
+			fprintf(stderr, " -- Command ID: %"PRI_TUPID"\n", aid->cmdid);
 		}
 		tup_db_print(stderr, tupid);
 		aid->input_error = 1;
@@ -3904,12 +3920,12 @@ int tup_db_check_actual_inputs(tupid_t cmdid, struct list_head *readlist)
 {
 	struct rb_root normal_tree = {NULL};
 	struct rb_root sticky_copy = {NULL};
-	struct actual_input_data aid = {
-		.cmdid = cmdid,
-		.input_error = 0,
-		.sticky_tree = {NULL},
-		.output_tree = {NULL},
-	};
+	struct actual_input_data aid;
+
+	aid.cmdid = cmdid;
+	aid.input_error = 0;
+	aid.sticky_tree.rb_node = NULL;
+	aid.output_tree.rb_node = NULL;
 
 	if(get_output_tree(cmdid, &aid.output_tree) < 0)
 		return -1;
@@ -3964,10 +3980,10 @@ static int rm_output(tupid_t tupid, void *data)
 int tup_db_write_outputs(tupid_t cmdid, struct rb_root *tree)
 {
 	struct rb_root output_tree = {NULL};
-	struct parse_output_data pod = {
-		.cmdid = cmdid,
-		.outputs_differ = 0,
-	};
+	struct parse_output_data pod;
+
+	pod.cmdid = cmdid;
+	pod.outputs_differ = 0;
 
 	if(get_output_tree(cmdid, &output_tree) < 0)
 		return -1;
@@ -4009,15 +4025,15 @@ int tup_db_write_dir_inputs(tupid_t dt, struct rb_root *tree)
 {
 	struct rb_root sticky_tree = {NULL};
 	struct rb_root normal_tree = {NULL};
-	struct write_dir_input_data wdid = {
-		.dt = dt,
-	};
+	struct write_dir_input_data wdid;
+
+	wdid.dt = dt;
 
 	if(get_links(dt, &sticky_tree, &normal_tree) < 0)
 		return -1;
 	if(sticky_tree.rb_node != NULL) {
 		/* All links to directories should be TUP_LINK_NORMAL */
-		fprintf(stderr, "tup internal error: sticky link found to dir %lli\n", dt);
+		fprintf(stderr, "tup internal error: sticky link found to dir %"PRI_TUPID"\n", dt);
 		return -1;
 	}
 	if(compare_trees(tree, &normal_tree, &wdid,
@@ -4045,7 +4061,7 @@ int tup_db_node_insert_tent(tupid_t dt, const char *name, int len, int type,
 	static char s[] = "insert into node(dir, type, name, sym, mtime) values(?, ?, ?, -1, ?)";
 	tupid_t tupid;
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli, %i, '%.*s', %li][0m\n", s, dt, type, len, name, mtime);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID", %i, '%.*s', %li][0m\n", s, dt, type, len, name, mtime);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -4116,7 +4132,7 @@ static int node_select(tupid_t dt, const char *name, int len,
 	if(*entry)
 		return 0;
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli, '%.*s'][0m\n", s, dt, len, name);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID", '%.*s'][0m\n", s, dt, len, name);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -4172,19 +4188,19 @@ static int link_insert(tupid_t a, tupid_t b, int style)
 	static char s[] = "insert into link(from_id, to_id, style) values(?, ?, ?)";
 
 	if(a == b) {
-		fprintf(stderr, "tup error: Attempt made to link a node to itself (%lli)\n", a);
+		fprintf(stderr, "tup error: Attempt made to link a node to itself (%"PRI_TUPID")\n", a);
 		return -1;
 	}
 	if(style == 0) {
-		fprintf(stderr, "tup error: Attempt to insert unstyled link %lli -> %lli\n", a, b);
+		fprintf(stderr, "tup error: Attempt to insert unstyled link %"PRI_TUPID" -> %"PRI_TUPID"\n", a, b);
 		return -1;
 	}
 	if(a <= 0 || b <= 0) {
-		fprintf(stderr, "tup error: Attmept to insert invalid link: %lli -> %lli\n", a, b);
+		fprintf(stderr, "tup error: Attmept to insert invalid link: %"PRI_TUPID" -> %"PRI_TUPID"\n", a, b);
 		return -1;
 	}
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli, %lli, %i][0m\n", s, a, b, style);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID", %"PRI_TUPID", %i][0m\n", s, a, b, style);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -4226,7 +4242,7 @@ static int link_update(tupid_t a, tupid_t b, int style)
 	sqlite3_stmt **stmt = &stmts[_DB_LINK_UPDATE];
 	static char s[] = "update link set style=? where from_id=? and to_id=?";
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%i, %lli, %lli][0m\n", s, style, a, b);
+	if(sql_debug) fprintf(stderr, "%s [37m[%i, %"PRI_TUPID", %"PRI_TUPID"][0m\n", s, style, a, b);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -4268,7 +4284,7 @@ static int link_remove(tupid_t a, tupid_t b)
 	sqlite3_stmt **stmt = &stmts[_DB_LINK_REMOVE];
 	static char s[] = "delete from link where from_id=? and to_id=?";
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli, %lli][0m\n", s, a, b);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID", %"PRI_TUPID"][0m\n", s, a, b);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -4312,7 +4328,7 @@ static int node_has_ghosts(tupid_t tupid)
 	 * via dir or sym. We don't care about links because nothing will have
 	 * a link to a ghost.
 	 */
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli, %lli][0m\n", s, tupid, tupid);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID", %"PRI_TUPID"][0m\n", s, tupid, tupid);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -4390,7 +4406,7 @@ static int add_ghost_links(tupid_t tupid)
 	sqlite3_stmt **stmt = &stmts[_DB_ADD_GHOST_LINKS];
 	static char s[] = "select from_id from link where to_id=?";
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli][0m\n", s, tupid);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID"][0m\n", s, tupid);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -4443,9 +4459,11 @@ static int adjust_ghost_symlinks(tupid_t tupid)
 	sqlite3_stmt **stmt = &stmts[_DB_ADJUST_GHOST_SYMLINKS];
 	static char s[] = "select id from node where sym=?";
 	struct id_entry *ide;
-	LIST_HEAD(del_list);
+	struct list_head del_list;
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli][0m\n", s, tupid);
+	INIT_LIST_HEAD(&del_list);
+
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID"][0m\n", s, tupid);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -4473,7 +4491,7 @@ static int adjust_ghost_symlinks(tupid_t tupid)
 		ide = malloc(sizeof *ide);
 		if(!ide) {
 			perror("malloc");
-			fprintf(stderr, "Unable to adjust symlinks for file '%lli'.\n", tupid);
+			fprintf(stderr, "Unable to adjust symlinks for file '%"PRI_TUPID"'.\n", tupid);
 			rc = -1;
 			goto out_reset;
 		}
@@ -4536,7 +4554,7 @@ static int reclaim_ghosts(void)
 
 		tent = list_entry(ghost_list.next, struct tup_entry, ghost_list);
 		if(tent->type != TUP_NODE_GHOST) {
-			fprintf(stderr, "tup internal error: tup entry %lli in the ghost_list shouldn't be type %i\n", tent->tnode.tupid, tent->type);
+			fprintf(stderr, "tup internal error: tup entry %"PRI_TUPID" in the ghost_list shouldn't be type %i\n", tent->tnode.tupid, tent->type);
 			return -1;
 		}
 		if(tup_entry_del_ghost_list(tent) < 0)
@@ -4547,7 +4565,7 @@ static int reclaim_ghosts(void)
 			return -1;
 		if(rc == 1) {
 			if(sql_debug || reclaim_ghost_debug) {
-				fprintf(stderr, "Ghost removed: %lli\n", tent->tnode.tupid);
+				fprintf(stderr, "Ghost removed: %"PRI_TUPID"\n", tent->tnode.tupid);
 			}
 
 			/* Re-check the parent again later */
@@ -4567,7 +4585,7 @@ static int ghost_reclaimable(tupid_t tupid)
 	sqlite3_stmt **stmt = &stmts[_DB_GHOST_RECLAIMABLE];
 	static char s[] = "select id from node where dir=? or sym=? union select from_id from link where from_id=?";
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli, %lli, %lli][0m\n", s, tupid, tupid, tupid);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID", %"PRI_TUPID", %"PRI_TUPID"][0m\n", s, tupid, tupid, tupid);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -4752,7 +4770,7 @@ static int var_flag_dirs(tupid_t tupid)
 	sqlite3_stmt **stmt = &stmts[_DB_VAR_FLAG_DIRS];
 	static char s[] = "insert or ignore into create_list select to_id from link, node where from_id=? and to_id=node.id and node.type=?";
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli, %i][0m\n", s, tupid, TUP_NODE_DIR);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID", %i][0m\n", s, tupid, TUP_NODE_DIR);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -4790,7 +4808,7 @@ static int var_flag_cmds(tupid_t tupid)
 	sqlite3_stmt **stmt = &stmts[_DB_VAR_FLAG_CMDS];
 	static char s[] = "insert or ignore into modify_list select to_id from link, node where from_id=? and to_id=node.id and node.type=?";
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli, %i][0m\n", s, tupid, TUP_NODE_CMD);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID", %i][0m\n", s, tupid, TUP_NODE_CMD);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",
@@ -4828,7 +4846,7 @@ static int delete_var_entry(tupid_t tupid)
 	sqlite3_stmt **stmt = &stmts[_DB_DELETE_VAR_ENTRY];
 	static char s[] = "delete from var where id=?";
 
-	if(sql_debug) fprintf(stderr, "%s [37m[%lli][0m\n", s, tupid);
+	if(sql_debug) fprintf(stderr, "%s [37m[%"PRI_TUPID"][0m\n", s, tupid);
 	if(!*stmt) {
 		if(sqlite3_prepare_v2(tup_db, s, sizeof(s), stmt, NULL) != 0) {
 			fprintf(stderr, "SQL Error: %s\nStatement was: %s\n",

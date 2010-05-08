@@ -18,7 +18,10 @@ struct vardict {
 	void *map;
 };
 static void tup_var_init(void) __attribute__((constructor));
-static void (*tup_send_event_f)(const char *file, int len, const char *file2, int len2, int at);
+static union {
+    void (*fp)(const char *file, int len, const char *file2, int len2, int at);
+    void* ptr;
+} tup_send_event_f;
 static int init_vardict(int fd);
 
 static struct vardict tup_vars;
@@ -28,8 +31,8 @@ static void tup_var_init(void)
 	char *path;
 	int vardict_fd;
 
-	tup_send_event_f = dlsym(RTLD_DEFAULT, "tup_send_event");
-	if(!tup_send_event_f) {
+	tup_send_event_f.ptr = dlsym(RTLD_DEFAULT, "tup_send_event");
+	if(!tup_send_event_f.ptr) {
 		fprintf(stderr, "tup client error: Unable to resolve tup_send_event symbol (is tup-ldpreload.so preloaded?)\n");
 		abort();
 	}
@@ -105,7 +108,7 @@ const char *tup_config_var(const char *key, int keylen)
 	if(keylen == -1)
 		keylen = strlen(key);
 
-	tup_send_event_f(key, keylen, "", 0, ACCESS_VAR);
+	tup_send_event_f.fp(key, keylen, "", 0, ACCESS_VAR);
 	while(1) {
 		cur = (right - left) >> 1;
 		if(cur <= 0)

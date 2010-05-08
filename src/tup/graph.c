@@ -48,7 +48,7 @@ struct node *create_node(struct graph *g, struct tup_entry *tent)
 void remove_node(struct graph *g, struct node *n)
 {
 	if(n->edges) {
-		DEBUGP("Warning: Node %lli still has edges.\n", n->tnode.tupid);
+		DEBUGP("Warning: Node %"PRI_TUPID" still has edges.\n", n->tnode.tupid);
 	}
 	rb_erase(&n->tnode.rbn, &g->tree);
 	free(n);

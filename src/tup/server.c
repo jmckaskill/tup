@@ -57,7 +57,7 @@ int start_server(struct server *s)
 
 	init_file_info(&s->finfo);
 
-	if(pthread_create(&s->tid, NULL, message_thread, s) < 0) {
+	if(pthread_create(&s->tid, NULL, &message_thread, s) < 0) {
 		perror("pthread_create");
 		close(s->sd[0]);
 		close(s->sd[1]);

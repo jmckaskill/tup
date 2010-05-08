@@ -291,7 +291,7 @@ static int graph(int argc, char **argv)
 	}
 
 	printf("digraph G {\n");
-	list_for_each_entry(n, &g.node_list, list) {
+	list_for_each_entry(struct node, n, &g.node_list, list) {
 		int color;
 		int fontcolor;
 		const char *shape;
@@ -352,7 +352,7 @@ static int graph(int argc, char **argv)
 				 */
 			}
 		}
-		printf("\tnode_%lli [label=\"", n->tnode.tupid);
+		printf("\tnode_%"PRI_TUPID" [label=\"", n->tnode.tupid);
 		s = n->tent->name.s;
 		if(s[0] == '^') {
 			s++;
@@ -364,19 +364,19 @@ static int graph(int argc, char **argv)
 		} else {
 			print_name(s, 0);
 		}
-		printf("\\n%lli\" shape=\"%s\" color=\"#%06x\" fontcolor=\"#%06x\" style=%s];\n", n->tnode.tupid, shape, color, fontcolor, style);
+		printf("\\n%"PRI_TUPID"\" shape=\"%s\" color=\"#%06x\" fontcolor=\"#%06x\" style=%s];\n", n->tnode.tupid, shape, color, fontcolor, style);
 		if(n->tent->dt) {
 			struct node *tmp;
 			tmp = find_node(&g, n->tent->dt);
 			if(tmp)
-				printf("\tnode_%lli -> node_%lli [dir=back color=\"#888888\" arrowtail=odot]\n", n->tnode.tupid, n->tent->dt);
+				printf("\tnode_%"PRI_TUPID" -> node_%"PRI_TUPID" [dir=back color=\"#888888\" arrowtail=odot]\n", n->tnode.tupid, n->tent->dt);
 		}
 		if(n->tent->sym != -1)
-			printf("\tnode_%lli -> node_%lli [dir=back color=\"#00BBBB\" arrowtail=vee]\n", n->tent->sym, n->tnode.tupid);
+			printf("\tnode_%"PRI_TUPID" -> node_%"PRI_TUPID" [dir=back color=\"#00BBBB\" arrowtail=vee]\n", n->tent->sym, n->tnode.tupid);
 
 		e = n->edges;
 		while(e) {
-			printf("\tnode_%lli -> node_%lli [dir=back,style=\"%s\"]\n", e->dest->tnode.tupid, n->tnode.tupid, (e->style == TUP_LINK_STICKY) ? "dotted" : "solid");
+			printf("\tnode_%"PRI_TUPID" -> node_%"PRI_TUPID" [dir=back,style=\"%s\"]\n", e->dest->tnode.tupid, n->tnode.tupid, (e->style == TUP_LINK_STICKY) ? "dotted" : "solid");
 			e = e->next;
 		}
 	}
@@ -546,7 +546,7 @@ static int touch(int argc, char **argv)
 
 		dt = find_dir_tupid_dt(sub_dir_dt, argv[x], &pel, NULL, 0);
 		if(dt <= 0) {
-			fprintf(stderr, "Error finding dt for dir '%s' relative to dir %lli\n", argv[x], sub_dir_dt);
+			fprintf(stderr, "Error finding dt for dir '%s' relative to dir %"PRI_TUPID"\n", argv[x], sub_dir_dt);
 			return -1;
 		}
 		if(S_ISDIR(buf.st_mode)) {
@@ -589,11 +589,11 @@ static int node(int argc, char **argv)
 
 		dt = find_dir_tupid_dt(sub_dir_dt, argv[x], &pel, NULL, 0);
 		if(dt <= 0) {
-			fprintf(stderr, "Unable to find dir '%s' relative to %lli\n", argv[x], sub_dir_dt);
+			fprintf(stderr, "Unable to find dir '%s' relative to %"PRI_TUPID"\n", argv[x], sub_dir_dt);
 			return -1;
 		}
 		if(create_name_file(dt, pel->path, -1, NULL) < 0) {
-			fprintf(stderr, "Unable to create node for '%s' in dir %lli\n", pel->path, dt);
+			fprintf(stderr, "Unable to create node for '%s' in dir %"PRI_TUPID"\n", pel->path, dt);
 			return -1;
 		}
 		free(pel);
@@ -619,7 +619,7 @@ static int rm(int argc, char **argv)
 
 		dt = find_dir_tupid_dt(sub_dir_dt, argv[x], &pel, NULL, 0);
 		if(dt < 0) {
-			fprintf(stderr, "Unable to find dir '%s' relative to %lli\n", argv[x], sub_dir_dt);
+			fprintf(stderr, "Unable to find dir '%s' relative to %"PRI_TUPID"\n", argv[x], sub_dir_dt);
 			return -1;
 		}
 		if(tup_file_del(dt, pel->path, pel->len) < 0)
@@ -713,7 +713,7 @@ static int fake_mtime(int argc, char **argv)
 		return -1;
 	}
 	if(tup_db_select_tent_part(dt, pel->path, pel->len, &tent) < 0) {
-		fprintf(stderr, "Unable to find node '%.*s' in dir %lli\n", pel->len, pel->path, dt);
+		fprintf(stderr, "Unable to find node '%.*s' in dir %"PRI_TUPID"\n", pel->len, pel->path, dt);
 		return -1;
 	}
 	mtime = strtol(argv[2], NULL, 0);

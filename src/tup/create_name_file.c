@@ -266,7 +266,7 @@ static int tup_del_id_type(tupid_t tupid, int type, int force)
 		 * been executed yet.
 		 */
 		if(modified == 1)
-			fprintf(stderr, "tup warning: generated file ID %lli was deleted outside of tup. This file may be re-created on the next update.\n", tupid);
+			fprintf(stderr, "tup warning: generated file ID %"PRI_TUPID" was deleted outside of tup. This file may be re-created on the next update.\n", tupid);
 		/* If we're not forcing the deletion, just return here (the
 		 * node won't actually be removed from tup). The fact that the
 		 * command is in modify will take care of dependencies, and
@@ -467,11 +467,11 @@ int add_node_to_list(tupid_t dt, struct pel_group *pg, struct list_head *list,
 	if(!tent) {
 		if(sotgv) {
 			if(tup_db_node_insert_tent(new_dt, pel->path, pel->len, TUP_NODE_GHOST, -1, &tent) < 0) {
-				fprintf(stderr, "Error: Node '%.*s' doesn't exist in directory %lli, and no luck creating a ghost node there.\n", pel->len, pel->path, new_dt);
+				fprintf(stderr, "Error: Node '%.*s' doesn't exist in directory %"PRI_TUPID", and no luck creating a ghost node there.\n", pel->len, pel->path, new_dt);
 				return -1;
 			}
 		} else {
-			fprintf(stderr, "tup error: Expected node '%.*s' to be in directory %lli, but it is not there.\n", pel->len, pel->path, new_dt);
+			fprintf(stderr, "tup error: Expected node '%.*s' to be in directory %"PRI_TUPID", but it is not there.\n", pel->len, pel->path, new_dt);
 			tup_db_print(stderr, new_dt);
 			return -1;
 		}
@@ -511,7 +511,7 @@ int gimme_node_or_make_ghost(tupid_t dt, const char *name,
 		return -1;
 	if(!*entry) {
 		if(tup_db_node_insert_tent(new_dt, pel->path, pel->len, TUP_NODE_GHOST, -1, entry) < 0) {
-			fprintf(stderr, "Error: Node '%.*s' doesn't exist in directory %lli, and no luck creating a ghost node there.\n", pel->len, pel->path, new_dt);
+			fprintf(stderr, "Error: Node '%.*s' doesn't exist in directory %"PRI_TUPID", and no luck creating a ghost node there.\n", pel->len, pel->path, new_dt);
 			return -1;
 		}
 	}

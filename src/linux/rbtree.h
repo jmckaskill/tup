@@ -105,7 +105,8 @@ struct rb_node
 #define	RB_BLACK	1
 	struct rb_node *rb_right;
 	struct rb_node *rb_left;
-} __attribute__((aligned(sizeof(long))));
+};
+/*__attribute__((aligned(sizeof(long))));*/
     /* The alignment might seem pointless, but allegedly CRIS needs it */
 
 struct rb_root
@@ -130,7 +131,7 @@ static inline void rb_set_color(struct rb_node *rb, int color)
 	rb->rb_parent_color = (rb->rb_parent_color & ~1) | color;
 }
 
-#define RB_ROOT	(struct rb_root) { NULL, }
+#define RB_ROOT	{ NULL }
 #define	rb_entry(ptr, type, member) container_of(ptr, type, member)
 
 #define RB_EMPTY_ROOT(root)	((root)->rb_node == NULL)

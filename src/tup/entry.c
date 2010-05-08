@@ -27,7 +27,7 @@ int tup_entry_add(tupid_t tupid, struct tup_entry **dest)
 	struct tup_entry *tent;
 
 	if(tupid <= 0) {
-		fprintf(stderr, "Error: Tupid is %lli in tup_entry_add()\n",
+		fprintf(stderr, "Error: Tupid is %"PRI_TUPID" in tup_entry_add()\n",
 			tupid);
 		return -1;
 	}
@@ -58,12 +58,12 @@ int tup_entry_add(tupid_t tupid, struct tup_entry **dest)
 		return -1;
 
 	if(tupid_tree_insert(&tup_tree, &tent->tnode) < 0) {
-		fprintf(stderr, "tup error: Unable to insert node %lli into the tupid tree\n", tent->tnode.tupid);
+		fprintf(stderr, "tup error: Unable to insert node %"PRI_TUPID" into the tupid tree\n", tent->tnode.tupid);
 		return -1;
 	}
 	if(tent->parent) {
 		if(string_tree_insert(&tent->parent->entries, &tent->name) < 0) {
-			fprintf(stderr, "tup error: Unable to insert node named '%s' into parent's (id=%lli) string tree.\n", tent->name.s, tent->parent->tnode.tupid);
+			fprintf(stderr, "tup error: Unable to insert node named '%s' into parent's (id=%"PRI_TUPID") string tree.\n", tent->name.s, tent->parent->tnode.tupid);
 			return -1;
 		}
 	}
@@ -92,7 +92,7 @@ int tup_entry_find_name_in_dir(tupid_t dt, const char *name, int len,
 
 	parent = tup_entry_find(dt);
 	if(!parent) {
-		fprintf(stderr, "tup error: Unable to find parent entry [%lli] for node '%.*s'\n", dt, len, name);
+		fprintf(stderr, "tup error: Unable to find parent entry [%"PRI_TUPID"] for node '%.*s'\n", dt, len, name);
 		return -1;
 	}
 	st = string_tree_search(&parent->entries, name, len);
@@ -126,13 +126,13 @@ static int rm_entry(tupid_t tupid, int safe)
 		if(safe) {
 			return 0;
 		} else {
-			fprintf(stderr, "tup internal error: tup_entry_rm called on tupid %lli, which still has entries\n", tupid);
+			fprintf(stderr, "tup internal error: tup_entry_rm called on tupid %"PRI_TUPID", which still has entries\n", tupid);
 			return -1;
 		}
 	}
 
 	if(tent->list.next != NULL) {
-		fprintf(stderr, "tup internal error: tup_entry_rm called on tupid %lli, which is in the entry list [%lli:%s]\n", tupid, tent->dt, tent->name.s);
+		fprintf(stderr, "tup internal error: tup_entry_rm called on tupid %"PRI_TUPID", which is in the entry list [%"PRI_TUPID":%s]\n", tupid, tent->dt, tent->name.s);
 		return -1;
 	}
 	if(tent->ghost_list.next != NULL) {
@@ -154,7 +154,7 @@ struct tup_entry *tup_entry_get(tupid_t tupid)
 
 	tent = tup_entry_find(tupid);
 	if(!tent) {
-		fprintf(stderr, "tup internal error: Unable to find tup entry %lli in tup_entry_get()\n", tupid);
+		fprintf(stderr, "tup internal error: Unable to find tup entry %"PRI_TUPID" in tup_entry_get()\n", tupid);
 		exit(1);
 	}
 	return tent;
@@ -327,7 +327,7 @@ static struct tup_entry *new_entry(tupid_t tupid, tupid_t dt, tupid_t sym,
 	tent->entries.rb_node = NULL;
 
 	if(tupid_tree_insert(&tup_tree, &tent->tnode) < 0) {
-		fprintf(stderr, "tup error: Unable to insert node %lli into the tupid tree in new_entry\n", tent->tnode.tupid);
+		fprintf(stderr, "tup error: Unable to insert node %"PRI_TUPID" into the tupid tree in new_entry\n", tent->tnode.tupid);
 		tup_db_print(stderr, tent->tnode.tupid);
 		return NULL;
 	}
@@ -342,11 +342,11 @@ static int resolve_parent(struct tup_entry *tent)
 	} else {
 		tent->parent = tup_entry_find(tent->dt);
 		if(!tent->parent) {
-			fprintf(stderr, "tup error: Unable to find parent entry [%lli] for node %lli.\n", tent->dt, tent->tnode.tupid);
+			fprintf(stderr, "tup error: Unable to find parent entry [%"PRI_TUPID"] for node %"PRI_TUPID".\n", tent->dt, tent->tnode.tupid);
 			return -1;
 		}
 		if(string_tree_insert(&tent->parent->entries, &tent->name) < 0) {
-			fprintf(stderr, "tup error: Unable to insert node named '%s' into parent's (id=%lli) string tree.\n", tent->name.s, tent->parent->tnode.tupid);
+			fprintf(stderr, "tup error: Unable to insert node named '%s' into parent's (id=%"PRI_TUPID") string tree.\n", tent->name.s, tent->parent->tnode.tupid);
 			return -1;
 		}
 	}
@@ -361,7 +361,7 @@ int tup_entry_resolve_sym(struct tup_entry *tent)
 		if(tup_entry_add(tent->sym, &tent->symlink) < 0)
 			return -1;
 		if(!tent->symlink) {
-			fprintf(stderr, "tup error: Unable to find sym entry [%lli] for node %lli\n", tent->sym, tent->tnode.tupid);
+			fprintf(stderr, "tup error: Unable to find sym entry [%"PRI_TUPID"] for node %"PRI_TUPID"\n", tent->sym, tent->tnode.tupid);
 			return -1;
 		}
 	}
@@ -505,7 +505,7 @@ void tup_entry_add_ghost_list(struct tup_entry *tent, struct list_head *list)
 int tup_entry_del_ghost_list(struct tup_entry *tent)
 {
 	if(tent->ghost_list.next == NULL) {
-		fprintf(stderr, "tup internal error: ghost_list.next is NULL in tup_entry_del_ghost_list %lli [%lli:%s]\n", tent->tnode.tupid, tent->dt, tent->name.s);
+		fprintf(stderr, "tup internal error: ghost_list.next is NULL in tup_entry_del_ghost_list %"PRI_TUPID" [%"PRI_TUPID":%s]\n", tent->tnode.tupid, tent->dt, tent->name.s);
 		return -1;
 	}
 	list_del(&tent->ghost_list);
@@ -559,6 +559,6 @@ void dump_tup_entry(void)
 
 		tt = rb_entry(rbn, struct tupid_tree, rbn);
 		tent = container_of(tt, struct tup_entry, tnode);
-		printf("  [%lli, dir=%lli, type=%i] name=%s\n", tent->tnode.tupid, tent->dt, tent->type, tent->name.s);
+		printf("  [%"PRI_TUPID", dir=%"PRI_TUPID", type=%i] name=%s\n", tent->tnode.tupid, tent->dt, tent->type, tent->name.s);
 	}
 }
