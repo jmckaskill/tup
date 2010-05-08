@@ -8,7 +8,7 @@ cat > ok.sh << HERE
 cat secret/ghost 2>/dev/null || echo nofile
 HERE
 cat > Tupfile << HERE
-: |> ./ok.sh > %o |> output.txt
+: |> sh ok.sh > %o |> output.txt
 HERE
 chmod +x ok.sh
 tup touch ok.sh Tupfile

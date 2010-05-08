@@ -6,7 +6,7 @@
 . ./tup.sh
 cat > Tupfile << HERE
 : foreach \$(srcs) |> nope |> %B.o
-: \$(objs) |> not gonna work |> prog
+: \$(objs) |> not gonna work |> prog.exe
 : |> echo foo > %o |> bar
 HERE
 

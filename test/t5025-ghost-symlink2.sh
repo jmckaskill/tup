@@ -4,6 +4,7 @@
 # node, and then re-create the destination.
 
 . ./tup.sh
+unix_only
 echo "#define FOO 3" > foo-x86.h
 ln -s foo-x86.h foo.h
 cat > Tupfile << HERE
@@ -11,21 +12,21 @@ cat > Tupfile << HERE
 HERE
 tup touch foo-x86.h foo.h
 update
-echo '#define FOO 3' | diff - output.txt
+echo '#define FOO 3' | diff -b - output.txt
 check_updates foo.h output.txt
 check_updates foo-x86.h output.txt
 
 rm -f foo-x86.h
 tup rm foo-x86.h
 update
-echo 'nofile' | diff - output.txt
+echo 'nofile' | diff -b - output.txt
 # Careful: Can't do check_updates with foo.h here since the touch() will end
 # up changing the sym field of foo.h
 
 echo "#define FOO new" > foo-x86.h
 tup touch foo-x86.h
 update
-echo '#define FOO new' | diff - output.txt
+echo '#define FOO new' | diff -b - output.txt
 check_updates foo.h output.txt
 check_updates foo-x86.h output.txt
 

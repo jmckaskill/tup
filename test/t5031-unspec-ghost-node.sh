@@ -10,7 +10,7 @@ cat > Tupfile << HERE
 HERE
 tup touch Tupfile
 update
-echo nofile | diff - output.txt
+echo nofile | diff -b - output.txt
 
 cat > Tupfile << HERE
 : |> echo yo > %o |> ghost
@@ -25,6 +25,6 @@ cat > Tupfile << HERE
 HERE
 tup touch Tupfile
 update
-echo yo | diff - output.txt
+echo yo | diff -b - output.txt
 
 eotup

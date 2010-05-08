@@ -11,7 +11,7 @@ tup touch foo.txt Tupfile
 varsetall FOO=sup
 update
 tup_object_exist . foo.txt out.txt
-echo "hey sup yo" | diff out.txt -
+echo "hey sup yo" | diff -b out.txt -
 
 tup touch Tupfile
 update

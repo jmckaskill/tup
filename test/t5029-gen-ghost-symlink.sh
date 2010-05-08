@@ -3,6 +3,7 @@
 # Try to generate a ghost symlink from a rule.
 
 . ./tup.sh
+unix_only
 cat > Tupfile << HERE
 : |> ln -s ghost %o |> foo
 HERE

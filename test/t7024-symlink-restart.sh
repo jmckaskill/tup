@@ -2,6 +2,7 @@
 
 # Make sure a symlink doesn't do anything funky when the monitor is restarted
 . ./tup.sh
+unix_only
 check_monitor_supported
 tup monitor
 

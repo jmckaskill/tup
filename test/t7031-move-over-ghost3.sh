@@ -3,6 +3,7 @@
 # We have a ghost node that is pointed to by another node, then move a
 # directory over the parent ghost. The symlink's tupid should be updated.
 . ./tup.sh
+unix_only
 check_monitor_supported
 tup monitor
 

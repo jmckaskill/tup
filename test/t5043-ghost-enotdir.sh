@@ -9,7 +9,7 @@ cat > Tupfile << HERE
 HERE
 tup touch secret Tupfile
 update
-echo nofile | diff - output.txt
+echo nofile | diff -b - output.txt
 
 rm secret
 tup rm secret
@@ -18,6 +18,6 @@ echo 'boo' > secret/ghost
 tup touch secret/ghost
 update
 
-echo boo | diff - output.txt
+echo boo | diff -b - output.txt
 
 eotup

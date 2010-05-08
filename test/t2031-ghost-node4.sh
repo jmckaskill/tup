@@ -8,13 +8,13 @@ cat > ok.sh << HERE
 if [ -f ghost ]; then cat ghost; else echo nofile; fi
 HERE
 cat > Tupfile << HERE
-: |> ./ok.sh > %o |> output.txt
+: |> sh ok.sh > %o |> output.txt
 HERE
 chmod +x ok.sh
 tup touch ok.sh Tupfile
 update
-echo nofile | diff output.txt -
-tup_dep_exist . ghost . './ok.sh > output.txt'
+echo nofile | diff -b output.txt -
+tup_dep_exist . ghost . 'sh ok.sh > output.txt'
 
 # Change ok.sh so it doesn't try to read from ghost, and make sure the
 # dependency is gone.
@@ -23,7 +23,7 @@ echo nofile
 HERE
 tup touch ok.sh
 update
-tup_dep_no_exist . ghost . './ok.sh > output.txt'
+tup_dep_no_exist . ghost . 'sh ok.sh > output.txt'
 
 # Just as a double-check of sorts - actually create the ghost node and update,
 # after deleting output.txt from behind tup's back. The output.txt file

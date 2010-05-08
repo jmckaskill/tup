@@ -8,7 +8,7 @@ cat > ok.sh << HERE
 if [ -f ghost ]; then cat ghost; else echo nofile; fi
 HERE
 cat > Tupfile << HERE
-: |> ./ok.sh > %o |> output.txt
+: |> sh ok.sh > %o |> output.txt
 HERE
 chmod +x ok.sh
 tup touch ok.sh Tupfile

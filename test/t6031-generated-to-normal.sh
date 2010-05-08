@@ -21,7 +21,7 @@ echo 'new file' > bar.txt
 tup touch bar.txt
 update
 
-echo orig | diff - bar.txt
+echo orig | diff -b - bar.txt
 
 # Now overwrite bar.txt and remove the rule for it. The file should stay put
 # with the new text.
@@ -32,7 +32,7 @@ update
 
 check_exist foo.txt bar.txt
 
-echo 'new file' | diff - bar.txt
+echo 'new file' | diff -b - bar.txt
 
 tup_object_exist . bar.txt
 

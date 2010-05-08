@@ -10,7 +10,7 @@ srcs += foo.c
 endif
 
 : foreach \$(srcs) |> gcc -c %f -o %o |> %B.o
-: *.o |> gcc %f -o prog |> prog
+: *.o |> gcc %f -o prog.exe |> prog.exe
 HERE
 
 echo "int main(void) {} void bar(void) {}" > bar.c
@@ -19,7 +19,7 @@ tup touch foo.c bar.c Tupfile
 update
 sym_check foo.o foo
 sym_check bar.o bar main
-sym_check prog foo bar main
+sym_check prog.exe foo bar main
 
 cat Tupfile | sed 's/FOO := 1/FOO := 0/' > tmpTupfile
 mv tmpTupfile Tupfile
@@ -27,7 +27,7 @@ tup touch Tupfile
 update
 
 sym_check bar.o bar main
-sym_check prog bar main ~foo
+sym_check prog.exe bar main "~foo"
 check_not_exist foo.o
 
 eotup

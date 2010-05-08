@@ -7,6 +7,13 @@ mkdir $tuptestdir
 cd $tuptestdir
 tup init --no-sync --force
 
+unix_only()
+{
+  if [ "$tupos" = "MINGW32_NT-5.1" ]; then
+    exit 0
+  fi
+}
+
 tmkdir()
 {
 	mkdir $1
@@ -19,6 +26,7 @@ check_empty_tupdirs()
 		:
 	else
 		echo "*** Nodes shouldn't have flags set" 1>&2
+    tup todo
 		exit 1
 	fi
 }
@@ -160,7 +168,7 @@ update_fail()
 
 update_fail_msg()
 {
-	if tup upd 2>.tupoutput; then
+	if tup upd &>.tupoutput; then
 		echo "*** Expected update to fail, but didn't" 1>&2
 		exit 1
 	else

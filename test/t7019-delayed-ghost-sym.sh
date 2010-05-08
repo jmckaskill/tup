@@ -1,6 +1,7 @@
 #! /bin/sh -e
 
 . ./tup.sh
+unix_only
 check_monitor_supported
 
 # Check to see if we can create a ghost node, then shutdown the monitor and
@@ -12,7 +13,7 @@ cat > Tupfile << HERE
 HERE
 update
 stop_monitor
-echo nofile | diff - output.txt
+echo nofile | diff -b - output.txt
 tup_object_exist . ghost
 
 echo foo > bar
@@ -21,13 +22,13 @@ ln -s bar ghost
 tup monitor
 update
 stop_monitor
-echo foo | diff - output.txt
+echo foo | diff -b - output.txt
 
 rm ghost
 ln -s baz ghost
 tup monitor
 update
 stop_monitor
-echo newfoo | diff - output.txt
+echo newfoo | diff -b - output.txt
 
 eotup

@@ -4,6 +4,7 @@
 # just because the symlink was.
 
 . ./tup.sh
+unix_only
 tup touch real
 ln -s real foo
 tup touch foo

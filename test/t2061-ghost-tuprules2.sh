@@ -9,7 +9,7 @@ tmkdir fs/sub
 cat > fs/Tupfile << HERE
 include_rules
 : foreach *.c |> gcc \$(CFLAGS) -c %f -o %o |> %B.o
-: *.o |> gcc \$(LDFLAGS) %f -o %o |> prog
+: *.o |> gcc \$(LDFLAGS) %f -o %o |> prog.exe
 HERE
 
 tup touch fs/Tupfile

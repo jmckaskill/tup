@@ -2,6 +2,7 @@
 
 # Like t5039, but with symlinks
 . ./tup.sh
+unix_only
 
 cat > Tupfile << HERE
 : |> touch foo; ln -s foo bar; ln -s foo baz |> foo

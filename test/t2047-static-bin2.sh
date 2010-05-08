@@ -7,25 +7,25 @@
 cat > Tupfile << HERE
 : foo.c |> gcc -c %f -o %o |> %B.o {objs}
 : bar.S |> as %f -o %o |> %B.o {objs}
-: {objs} |> gcc %f -o %o |> prog
+: {objs} |> gcc %f -o %o |> prog.exe
 HERE
 tup touch foo.c bar.S Tupfile
 tup parse
-tup_dep_exist . 'foo.o' . 'gcc foo.o bar.o -o prog'
-tup_dep_exist . 'bar.o' . 'gcc foo.o bar.o -o prog'
+tup_dep_exist . 'foo.o' . 'gcc foo.o bar.o -o prog.exe'
+tup_dep_exist . 'bar.o' . 'gcc foo.o bar.o -o prog.exe'
 
 # Re-order the first two rules.
 cat > Tupfile << HERE
 : bar.S |> as %f -o %o |> %B.o {objs}
 : foo.c |> gcc -c %f -o %o |> %B.o {objs}
-: {objs} |> gcc %f -o %o |> prog
+: {objs} |> gcc %f -o %o |> prog.exe
 HERE
 tup touch Tupfile
 # Parse here to remove the old command
 tup parse
-tup_dep_no_exist . 'foo.o' . 'gcc foo.o bar.o -o prog'
-tup_dep_no_exist . 'bar.o' . 'gcc foo.o bar.o -o prog'
-tup_dep_exist . 'foo.o' . 'gcc bar.o foo.o -o prog'
-tup_dep_exist . 'bar.o' . 'gcc bar.o foo.o -o prog'
+tup_dep_no_exist . 'foo.o' . 'gcc foo.o bar.o -o prog.exe'
+tup_dep_no_exist . 'bar.o' . 'gcc foo.o bar.o -o prog.exe'
+tup_dep_exist . 'foo.o' . 'gcc bar.o foo.o -o prog.exe'
+tup_dep_exist . 'bar.o' . 'gcc bar.o foo.o -o prog.exe'
 
 eotup

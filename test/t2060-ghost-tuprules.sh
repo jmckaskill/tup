@@ -8,7 +8,7 @@ tmkdir fs/sub
 cat > fs/sub/Tupfile << HERE
 include_rules
 : foreach *.c |> gcc \$(CFLAGS) -c %f -o %o |> %B.o
-: *.o |> gcc \$(LDFLAGS) %f -o %o |> prog
+: *.o |> gcc \$(LDFLAGS) %f -o %o |> prog.exe
 HERE
 
 cat > Tuprules.tup << HERE
@@ -24,7 +24,7 @@ tup touch fs/sub/helper.c
 tup parse
 
 tup_dep_exist fs/sub helper.c fs/sub 'gcc -Wall -O0 -c helper.c -o helper.o'
-tup_dep_exist fs/sub helper.o fs/sub 'gcc -lm helper.o -o prog'
+tup_dep_exist fs/sub helper.o fs/sub 'gcc -lm helper.o -o prog.exe'
 
 tup_dep_exist . Tuprules.tup fs sub
 tup_dep_exist fs Tuprules.tup fs sub
@@ -38,6 +38,6 @@ tup touch fs/Tuprules.tup
 tup parse
 
 tup_dep_exist fs/sub helper.c fs/sub 'gcc -Wall -DFS=1 -O0 -c helper.c -o helper.o'
-tup_dep_exist fs/sub helper.o fs/sub 'gcc -lm -lfoo helper.o -o prog'
+tup_dep_exist fs/sub helper.o fs/sub 'gcc -lm -lfoo helper.o -o prog.exe'
 
 eotup

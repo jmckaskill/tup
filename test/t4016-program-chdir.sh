@@ -22,7 +22,7 @@ HERE
 chmod +x ok.sh
 
 cat > Tupfile << HERE
-: tmp/bar |> ./ok.sh |> foo
+: tmp/bar |> sh ok.sh |> foo
 HERE
 
 echo "yo" > tmp/bar

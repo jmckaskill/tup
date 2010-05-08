@@ -3,6 +3,7 @@
 # Like t5013, but now with execvp.
 
 . ./tup.sh
+unix_only
 cat > Tupfile << HERE
 : foreach exec_test.c exe.c |> gcc %f -o %o |> %B
 : exec_test exe |> ./exec_test && touch %o |> test_passed

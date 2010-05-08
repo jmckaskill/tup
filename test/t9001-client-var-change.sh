@@ -12,13 +12,13 @@ HERE
 tup touch Tupfile empty.txt
 update
 
-diff empty.txt ok.txt
+diff -b empty.txt ok.txt
 
 tup_object_exist @ defg
 
 varsetall defg=hey
 update
 
-echo 'hey' | diff - ok.txt
+echo 'hey' | diff -b - ok.txt
 
 eotup

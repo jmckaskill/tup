@@ -13,7 +13,7 @@ echo "Another page" > page.txt
 tup flush
 
 check_exist index.html page.html
-cat << HERE | diff index.html -
+cat << HERE | diff -b index.html -
 <html>
 This is the index
 </html>
@@ -22,7 +22,7 @@ HERE
 # Change a file and see that it gets updated
 echo "Updated index" > index.txt
 tup flush
-cat << HERE | diff index.html -
+cat << HERE | diff -b index.html -
 <html>
 Updated index
 </html>
@@ -31,7 +31,7 @@ HERE
 # Add a new file and see it gets updated
 echo "New file" > new.txt
 tup flush
-cat << HERE | diff new.html -
+cat << HERE | diff -b new.html -
 <html>
 New file
 </html>

@@ -4,6 +4,7 @@
 # command that creates a regular file.
 
 . ./tup.sh
+unix_only
 
 cat > Tupfile << HERE
 : |> ln -s foo bar |> bar

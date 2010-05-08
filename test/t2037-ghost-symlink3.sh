@@ -4,6 +4,7 @@
 # one symlink doesn't kill the ghost.
 
 . ./tup.sh
+unix_only
 ln -s ghost foo
 ln -s ghost bar
 tup touch foo bar

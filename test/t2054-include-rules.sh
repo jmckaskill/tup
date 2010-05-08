@@ -8,7 +8,7 @@ tmkdir fs/sub
 cat > fs/Tupfile << HERE
 include_rules
 : foreach *.c |> gcc \$(CFLAGS) -c %f -o %o |> %B.o
-: *.o |> gcc \$(LDFLAGS) %f -o %o |> prog
+: *.o |> gcc \$(LDFLAGS) %f -o %o |> prog.exe
 HERE
 cp fs/Tupfile fs/sub/Tupfile
 
@@ -30,11 +30,11 @@ tup parse
 
 tup_dep_exist fs ext1.c fs 'gcc -Wall -DFS=1 -c ext1.c -o ext1.o'
 tup_dep_exist fs ext2.c fs 'gcc -Wall -DFS=1 -c ext2.c -o ext2.o'
-tup_dep_exist fs ext1.o fs 'gcc -lfoo ext1.o ext2.o -o prog'
-tup_dep_exist fs ext2.o fs 'gcc -lfoo ext1.o ext2.o -o prog'
+tup_dep_exist fs ext1.o fs 'gcc -lfoo ext1.o ext2.o -o prog.exe'
+tup_dep_exist fs ext2.o fs 'gcc -lfoo ext1.o ext2.o -o prog.exe'
 
 tup_dep_exist fs/sub helper.c fs/sub 'gcc -O0 -c helper.c -o helper.o'
-tup_dep_exist fs/sub helper.o fs/sub 'gcc -lfoo helper.o -o prog'
+tup_dep_exist fs/sub helper.o fs/sub 'gcc -lfoo helper.o -o prog.exe'
 
 tup_dep_exist . Tuprules.tup . fs
 tup_dep_exist . Tuprules.tup fs sub

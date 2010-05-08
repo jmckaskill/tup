@@ -3,8 +3,9 @@
 # Make %% end up doing a single % in the command string
 
 . ./tup.sh
+unix_only
 cat > Tupfile << HERE
-: |> printf "hey %%i yo\n" 3  |>
+: |> sh printf "hey %%i yo\n" 3  |>
 HERE
 tup touch Tupfile
 if tup upd | grep 'hey 3 yo' > /dev/null; then

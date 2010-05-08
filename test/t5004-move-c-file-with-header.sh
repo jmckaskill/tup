@@ -11,7 +11,7 @@ tup touch foo.c bar.c foo.h
 update
 sym_check foo.o main
 sym_check bar.o bar1
-sym_check prog main bar1
+sym_check prog.exe main bar1
 
 # Rename bar.c to realbar.c.
 mv bar.c realbar.c
@@ -21,6 +21,6 @@ update
 check_not_exist bar.o
 tup_object_no_exist bar.c bar.o
 sym_check realbar.o bar1
-sym_check prog main bar1
+sym_check prog.exe main bar1
 
 eotup

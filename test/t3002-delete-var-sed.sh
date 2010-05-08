@@ -13,7 +13,7 @@ varsetall FOO=sup
 update
 tup_object_exist . foo.txt out.txt
 tup_object_exist . ", foo.txt > out.txt"
-(echo "hey sup yo"; echo "This is an email@address.com") | diff out.txt -
+(echo "hey sup yo"; echo "This is an email@address.com") | diff -b out.txt -
 
 cat > Tupfile << HERE
 HERE

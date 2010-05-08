@@ -2,6 +2,7 @@
 
 # sym-cycle: a game about a wheel?
 . ./tup.sh
+unix_only
 
 ln -s a b
 ln -s b a
@@ -12,7 +13,7 @@ cat > Tupfile << HERE
 HERE
 tup touch Tupfile
 update
-echo yo | diff - output.txt
+echo yo | diff -b - output.txt
 
 cat > Tupfile << HERE
 : |> echo yoi > %o |> output.txt
@@ -21,7 +22,7 @@ tup touch Tupfile
 rm -f a b
 tup rm a b
 update
-echo yoi | diff - output.txt
+echo yoi | diff -b - output.txt
 tup_object_no_exist . a b
 
 eotup

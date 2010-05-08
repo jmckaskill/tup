@@ -16,14 +16,14 @@ update
 
 tup_dep_exist . ghost . 'sh ok.sh > output'
 
-echo 'nofile' | diff - output
+echo 'nofile' | diff -b - output
 cat > ok.sh << HERE
 cat foo.txt
 HERE
 tup touch ok.sh
 update
 
-echo 'heyo' | diff - output
+echo 'heyo' | diff -b - output
 tup_dep_no_exist . ghost . 'sh ok.sh > output'
 tup_object_no_exist . ghost
 

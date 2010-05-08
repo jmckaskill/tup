@@ -9,7 +9,7 @@
 # the monitor they come in from the ldpreload/wrapper).
 . ./tup.sh
 cat > Tupfile << HERE
-: |> ./foo.sh |> foo.h
+: |> sh foo.sh |> foo.h
 HERE
 
 cat > foo.sh << HERE

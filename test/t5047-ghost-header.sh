@@ -5,6 +5,9 @@
 # there).
 . ./tup.sh
 
+echo "[33mTODO windows t5024 - Fix weird errors from mingw[0m"
+unix_only
+
 tmkdir foo
 tmkdir bar
 echo '#define FOO 3' > foo/me.h

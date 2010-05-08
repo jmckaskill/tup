@@ -12,11 +12,11 @@
 
 . ./tup.sh
 cat > Tupfile << HERE
-: |> echo 'foo\$' | sed 's/o\\\$/3/' > %o |> out.txt
+: |> echo foo\$ | sed 's/o\\\$/3/' > %o |> out.txt
 HERE
 cat Tupfile
 tup touch Tupfile
 update
-echo 'fo3' | diff - out.txt
+echo 'fo3' | diff -b - out.txt
 
 eotup

@@ -11,13 +11,13 @@ cat > Tupfile << HERE
 HERE
 update
 stop_monitor
-echo nofile | diff - output.txt
+echo nofile | diff -b - output.txt
 tup_object_exist . ghost
 
 echo foo > ghost
 tup monitor
 update
 stop_monitor
-echo foo | diff - output.txt
+echo foo | diff -b - output.txt
 
 eotup
