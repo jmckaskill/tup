@@ -145,6 +145,7 @@ int updater(int argc, char **argv, int phase)
 			printf("%.3fs\n",
 			       (double)(t2.tv_sec - t1.tv_sec) +
 			       (double)(t2.tv_usec - t1.tv_usec)/1e6);
+			fflush(stdout);
 		} else {
 			/* tup_scan would normally add the @-directory to the
 			 * entry tree, so if that doesn't run we add it here.
