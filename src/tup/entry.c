@@ -173,7 +173,7 @@ void print_tup_entry(struct tup_entry *tent)
 	if(!tent || !tent->parent)
 		return;
 	print_tup_entry(tent->parent);
-	printf("%s/", tent->name.s);
+	printf("%s" path_sep_str, tent->name.s);
 }
 
 static int tup_entry_add_null(tupid_t tupid, struct tup_entry **dest)

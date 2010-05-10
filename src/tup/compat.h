@@ -25,4 +25,16 @@ DLLIMPORT int snprintf(char* str, size_t size, const char* format, ...);
 int setenv(const char* name, const char* value, int overwrite);
 #endif
 
+#ifdef _WIN32
+#define is_path_sep(str) ((str)[0] == '/' || (str)[0] == '\\' || (str)[0] == ':' || ((str)[0] != '\0' && (str)[1] == ':'))
+#define is_path_abs(str) (is_path_sep(str) || ((str)[0] == '\0' && (str)[1] == ':'))
+#define path_sep '\\'
+#define path_sep_str "\\"
+#else
+#define is_path_sep(ch) (ch == '/')
+#define is_path_abs(str) is_path_sep(str)
+#define path_sep '/'
+#define path_sep_str "/"
+#endif
+
 #endif

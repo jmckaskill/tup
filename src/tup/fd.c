@@ -30,7 +30,7 @@ static void appendcwd(struct buf* to)
 	to->s = (char*) malloc(to->len + 2);
 	GetCurrentDirectoryA(to->len + 1, to->s);
 	to->len++;
-	to->s[to->len - 1] = '/';
+	to->s[to->len - 1] = path_sep;
 	to->s[to->len] = '\0';
 }
 
@@ -40,7 +40,7 @@ static void appendcwd(struct buf* to)
 	to->len = pathconf(".", _PC_PATH_MAX);
 	to->s = (char*) malloc(to->len + 2);
 	getcwd(to->s, to->len - 1);
-	to->s[to->len] = '/';
+	to->s[to->len] = path_sep;
 	to->s[to->len + 1] = '\0';
 	to->len = strlen(to->s);
 }
@@ -62,7 +62,7 @@ static void relname(struct buf* parent, const char* name, struct buf* dest)
 		dest->s = (char*) malloc(dest->len + 1);
 		memcpy(dest->s, parent->s, parent->len);
 		to = dest->s + parent->len;
-		*(to++) = '/';
+		*(to++) = path_sep;
 
 	} else {
 		appendcwd(dest);
@@ -168,7 +168,7 @@ char* dup_filename(fd_t dir, const char* file)
 	char* to = buf;
 	memcpy(to, dir.u.dir.s, dir.u.dir.len);
 	to += dir.u.dir.len;
-	*(to++) = '/';
+	*(to++) = path_sep;
 	memcpy(to, file, filesz);
 	*to = '\0';
 	return to;
