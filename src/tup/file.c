@@ -267,6 +267,11 @@ static void handle_unlink(struct file_info *info)
 				del_entry(fent);
 			}
 		}
+		list_for_each_entry_safe(struct file_entry, fent, tmp, &info->ghost_list, list) {
+			if(pg_eq(&fent->pg, &u->pg)) {
+				del_entry(fent);
+			}
+		}
 
 		/* TODO: Do we need this? I think this should only apply to
 		 * temporary files.
