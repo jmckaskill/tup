@@ -144,7 +144,7 @@ int main(int argc, char **argv)
 	}
 
 	tup_cleanup();
-	return rc;
+	return abs(rc);
 }
 
 static int init(int argc, char **argv)
