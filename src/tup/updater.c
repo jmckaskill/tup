@@ -960,8 +960,19 @@ static int run(struct node* n, struct server* s, const char* name, fd_t dfd)
 	size_t cmdsz = sizeof(CMDSTR) - 1;
 	char* cmdline = (char*) alloca(namesz + cmdsz + 1 + 1);
 
+	int have_shell = strncmp(name, "sh ", 3) == 0
+		|| strncmp(name, "cmd ", 4) == 0;
+
+	int need_shell = strchr(name, '&') != NULL
+		|| strchr(name, '|') != NULL
+		|| strchr(name, '>') != NULL
+		|| strchr(name, '<') != NULL;
+
 	cmdline[0] = '\0';
-	strcat(cmdline, CMDSTR);
+	/* Only pull in cmd if really necessary */
+	if (!have_shell && need_shell) {
+		strcat(cmdline, CMDSTR);
+	}
 	strcat(cmdline, name);
 
 	memset(&sa, 0, sizeof(sa));
