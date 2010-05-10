@@ -8,7 +8,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-static void dump_node(FILE *f, struct node *n);
 static struct tup_entry root_entry;
 static char root_name[] = "root";
 
@@ -117,49 +116,3 @@ int destroy_graph(struct graph *g)
 	return 0;
 }
 
-void dump_graph(const struct graph *g, const char *filename)
-{
-	static int count = 0;
-	struct node *n;
-	char *realfile;
-	FILE *f;
-
-	if(asprintf(&realfile, filename, getpid(), count) < 0) {
-		perror("asprintf");
-		return;
-	}
-	fprintf(stderr, "Dumping graph '%s'\n", realfile);
-	count++;
-	f = fopen(realfile, "w");
-	if(!f) {
-		perror(realfile);
-		return;
-	}
-	fprintf(f, "digraph G {\n");
-	list_for_each_entry(n, &g->node_list, list) {
-		dump_node(f, n);
-	}
-	list_for_each_entry(n, &g->plist, list) {
-		dump_node(f, n);
-	}
-	fprintf(f, "}\n");
-	fclose(f);
-}
-
-static void dump_node(FILE *f, struct node *n)
-{
-	struct edge *e;
-	int color = 0;
-	int flags;
-
-	flags = tup_db_get_node_flags(n->tnode.tupid);
-	if(flags & TUP_FLAGS_CREATE)
-		color |= 0x00bb00;
-	if(flags & TUP_FLAGS_MODIFY)
-		color |= 0x0000ff;
-	fprintf(f, "tup%p [label=\"%s [%lli] (%i, %i)\",color=\"#%06x\"];\n",
-		n, n->tent->name.s, n->tnode.tupid, n->incoming_count, n->expanded, color);
-	for(e=n->edges; e; e=e->next) {
-		fprintf(f, "tup%p -> tup%p [dir=back];\n", e->dest, n);
-	}
-}
