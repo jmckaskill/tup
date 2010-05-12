@@ -34,8 +34,17 @@ void filetime_to_timeval(FILETIME* ft, struct timeval* tv);
 #ifdef _MSC_VER
 #define strdup _strdup
 #define alloca _alloca
+#define stricmp _stricmp
+#define strnicmp _strnicmp
+#define wcsicmp _wcsicmp
+#define wcsnicmp _wcsnicmp
+
 #elif defined(__GNUC__)
 _CRTIMP char* __cdecl __MINGW_NOTHROW	strdup (const char*) __MINGW_ATTRIB_MALLOC;
+_CRTIMP int __cdecl __MINGW_NOTHROW	stricmp (const char*, const char*);
+_CRTIMP int __cdecl __MINGW_NOTHROW	strnicmp (const char*, const char*, size_t);
+_CRTIMP int __cdecl __MINGW_NOTHROW	wcsicmp (const wchar_t*, const wchar_t*);
+_CRTIMP int __cdecl __MINGW_NOTHROW	wcsnicmp (const wchar_t*, const wchar_t*, size_t);
 #define alloca(x) __builtin_alloca((x))
 #endif
 

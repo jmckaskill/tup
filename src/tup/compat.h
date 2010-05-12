@@ -18,12 +18,18 @@
 #define is_path_abs(str) (is_path_sep(str) || ((str)[0] == '\0' && (str)[1] == ':'))
 #define path_sep '\\'
 #define path_sep_str "\\"
+#define sql_name_collation " collate nocase"
+#define name_cmp stricmp
+#define name_cmp_n strnicmp
 #else
 #error
 #define is_path_sep(ch) (ch == '/')
 #define is_path_abs(str) is_path_sep(str)
 #define path_sep '/'
 #define path_sep_str "/"
+#define sql_name_collation ""
+#define name_cmp strcmp
+#define name_cmp_n strncmp
 #endif
 
 #endif
