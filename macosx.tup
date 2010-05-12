@@ -1,4 +1,5 @@
 # vim: set ts=8 sw=8 sts=8 noet tw=78:
+include unix.tup
 FPIC = -fPIC
 SHARED = -dynamiclib
 CFLAGS += -DAT_SYMLINK_NOFOLLOW=0x100

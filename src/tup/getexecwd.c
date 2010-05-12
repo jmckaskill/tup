@@ -24,6 +24,8 @@ static int check_path(const char *path, const char *file);
 int init_getexecwd(const char *argv0)
 {
 	char* slash;
+
+	(void) argv0;
 	if (GetModuleFileNameA(NULL, mycwd, PATH_MAX - 1) == 0)
 		return -1;
 

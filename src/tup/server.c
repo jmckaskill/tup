@@ -55,6 +55,10 @@ void server_setenv(struct server *s, int vardict_fd)
 #else
 	setenv("LD_PRELOAD", ldpreload_path, 1);
 #endif
+
+#else
+	(void) s;
+	(void) vardict_fd;
 #endif
 }
 
@@ -151,17 +155,6 @@ int stop_server(struct server *s)
 	return -1;
 }
 
-static const char* access_type_name[] = {
-	"read",
-	"write",
-	"rename",
-	"unlink",
-	"var?",
-	"symlink",
-	"ghost",
-	"stop_server",
-};
-
 static void *message_thread(void *arg)
 {
 	int recvd;
@@ -173,7 +166,7 @@ static void *message_thread(void *arg)
 		char *event1, *event2;
 
 		recvd = recv(s->sd[0], buf, sizeof(buf), 0);
-		if (recvd < sizeof(struct access_event)) {
+		if (recvd < (int) sizeof(struct access_event)) {
 			perror("recv");
 			break;
 		}
@@ -181,7 +174,7 @@ static void *message_thread(void *arg)
 		if(event->at == ACCESS_STOP_SERVER)
 			break;
 
-		if(event->at > ACCESS_STOP_SERVER || event->at < 0) {
+		if(event->at > ACCESS_STOP_SERVER) {
 			fprintf(stderr, "Error: Received unknown access_type %d\n", event->at);
 			return (void*)-1;
 		}
@@ -201,7 +194,7 @@ static void *message_thread(void *arg)
 		event1 = (char*) event + sizeof(struct access_event);
 		event2 = event1 + event->len + 1;
 
-		if (recvd != sizeof(struct access_event) + event->len + event->len2 + 2) {
+		if (recvd != (int) sizeof(struct access_event) + event->len + event->len2 + 2) {
 			fprintf(stderr, "Error: Received weird size in access_event\n");
 			return (void*)-1;
 		}

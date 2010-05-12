@@ -16,6 +16,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <ctype.h>
 #include "sqlite3/sqlite3.h"
 
 #ifdef _WIN32

@@ -1,0 +1,35 @@
+# vim: set ts=8 sw=8 sts=8 noet tw=78 ft=tup:
+
+CC = cl
+LD = link
+SHARED = /DLL
+
+CFLAGS += /I$(TUP_CWD)\src 
+CFLAGS += /I$(TUP_CWD)\src\compat\msvc
+CFLAGS += /I$(TUP_CWD)\src\compat\win32
+CFLAGS += /nologo
+CFLAGS += /c
+CFLAGS += /D__STDC__
+CFLAGS += /D_CRT_SECURE_NO_DEPRECATE
+CFLAGS += /FC
+CFLAGS += /W3
+CFLAGS += /WX
+CFLAGS += /MT
+
+LDFLAGS += /NOLOGO
+LDFLAGS += /MACHINE:X86
+LDFLAGS += /SUBSYSTEM:CONSOLE
+
+ifeq (@(TUP_DEBUG),y)
+	CFLAGS += /Z7
+	LDFLAGS += /DEBUG
+else
+	CFLAGS += /Ox
+	CFLAGS += /DNDEBUG
+	LDFLAGS += /OPT:REF 
+	LDFLAGS += /OPT:ICF
+endif
+
+!cc = |> ^ CC %f^ $(CC) /c /Fo%o %f $(CFLAGS) $(CFLAGS_%f) |>
+!ld = |> ^ LINK %o^ $(LD) /OUT:%o %f $(LDFLAGS) $(LDFLAGS_%o) |>
+

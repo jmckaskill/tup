@@ -1,10 +1,21 @@
+# vim: set ts=8 sw=8 sts=8 noet tw=78 ft=tup:
 
-: |> echo const char* tup_version(void) {return "bootstrap";} > %o |> version.c
+ifeq (@(TUP_MSVC),y)
+	dllflags = ws2_32.lib psapi.lib user32.lib /OUT:tup-dllinject.dll $(SHARED)
+	dllout = tup-dllinject.dll tup-dllinject.lib tup-dllinject.exp
+	: src/ldpreload/*.o |> ^ LINK tup-dllinject.dll^ $(LD) %f $(LDFLAGS) $(dllflags) |> $(dllout)
+else
+	LDFLAGS_tup-dllinject.dll += -lws2_32 -lpsapi -luser32 $(SHARED)
+	: src/ldpreload/*.o |> !ld |> tup-dllinject.dll
+endif
+
+ifeq (@(TUP_PLATFORM),windows)
+	: |> echo const char* tup_version(void) {return "bootstrap";} > %o |> version.c
+else
+	: |> echo "const char* tup_version(void) {return \"`git describe`\";}" > %o |> version.c
+endif
+
 : version.c |> !cc |> version.o
-
-dllflags = ws2_32.lib psapi.lib user32.lib /OUT:tup-dllinject.dll /DLL
-dllout = tup-dllinject.dll tup-dllinject.lib tup-dllinject.exp
-: src/ldpreload/*.o |> ^ LINK tup-dllinject.dll^ $(LINK) %f $(LDFLAGS) $(dllflags) |> $(dllout)
 
 objs += src/tup/*.o
 objs += src/tup/tup/*.o
@@ -15,10 +26,14 @@ objs += src/sqlite3/*.o
 objs += src/compat/*.o
 objs += version.o
 
-LDFLAGS_tup += ws2_32.lib /OUT:tup.exe
-: $(objs) tup-dllinject.lib |> ^ LINK tup^ $(LINK) %f $(LDFLAGS) $(LDFLAGS_tup) |> tup.exe
+ifeq (@(TUP_MSVC),y)
+	LDFLAGS_tup.exe += ws2_32.lib
+	linklib = tup-dllinject.lib
+else
+	LDFLAGS_tup.exe += -lws2_32
+	linklib = tup-dllinject.dll
+endif
 
-LDFLAGS_cp += /OUT:cp.exe
-: src/cp/*.o |> ^ LINK cp^ $(LINK) %f $(LDFLAGS) $(LDFLAGS_cp) |> cp.exe
-
+: $(objs) $(linklib) |> !ld |> tup.exe
+: src/cp/*.o |> !ld |> cp.exe
 

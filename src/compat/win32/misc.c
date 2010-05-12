@@ -7,7 +7,10 @@ int chdir(const char* path)
 { return SetCurrentDirectoryA(path) ? 0 : -1; }
 
 int mkdir(const char* path, int mode)
-{ return CreateDirectoryA(path, NULL) ? 0 : -1; }
+{ 
+	(void) mode;
+	return CreateDirectoryA(path, NULL) ? 0 : -1; 
+}
 
 char* getcwd(char* buf, size_t size)
 {
@@ -47,11 +50,15 @@ int gettimeofday(struct timeval* tv, struct timezone* tz)
 int nanosleep(const struct timespec* req, struct timespec* rem)
 {
 	Sleep((DWORD) (req->tv_sec * 1e3 + req->tv_nsec / 1e6 + 1));
+	rem->tv_sec = 0;
+	rem->tv_nsec = 0;
 	return 0;
 }
 
 int setenv(const char* name, const char* value, int overwrite)
 {
+	if (!overwrite && getenv(name))
+		return 0;
 	return SetEnvironmentVariableA(name, value) ? 0 : -1;
 }
 

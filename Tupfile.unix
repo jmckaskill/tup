@@ -1,7 +1,8 @@
+# vim: set ts=8 sw=8 sts=8 noet tw=78 ft=tup:
+
 LDFLAGS_tup-ldpreload.so += $(FPIC)
-LDFLAGS_tup-ldpreload.so += $(SHARED)
 LDFLAGS_tup-ldpreload.so += -ldl
-: src/ldpreload/*.o |> !ld |> tup-ldpreload.so
+: src/ldpreload/*.o |> !ld-shared |> tup-ldpreload.so
 
 : src/tup/client/*.o |> !ar |> libtup_client.a
 

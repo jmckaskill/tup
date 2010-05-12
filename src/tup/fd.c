@@ -211,6 +211,7 @@ int fd_open(const char* name, int flags, fd_t* pfd)
 
 int fd_create(const char* name, int flags, int mode, fd_t* pfd)
 {
+	(void) mode;
 	pfd->is_dir = 0;
 	pfd->u.file = CreateFileA(
 			name,
@@ -247,6 +248,8 @@ int fd_createat(fd_t dir, const char* name, int flags, int mode, fd_t* pfd)
 {
 	struct buf b;
 	int ret;
+
+	(void) mode;
 
 	relname(&dir.u.dir, name, &b);
 	ret = fd_create(b.s, flags, mode, pfd);
@@ -290,6 +293,8 @@ int fd_mkdirat(fd_t dir, const char* name, int mode)
 	struct buf b;
 	BOOL ret;
 
+	(void) mode;
+
 	relname(&dir.u.dir, name, &b);
 	ret = CreateDirectoryA(b.s, NULL);
 	free(b.s);
@@ -303,7 +308,13 @@ int fd_mkdirat(fd_t dir, const char* name, int mode)
 }
 
 int fd_readlinkat(fd_t dir, const char* name, char* buf, size_t bufsz)
-{ return -1; }
+{ 
+	(void) dir;
+	(void) name;
+	(void) buf;
+	(void) bufsz;
+	return -1; 
+}
 
 int fd_unlinkat(fd_t dir, const char* name)
 {
@@ -387,10 +398,16 @@ int fd_read(fd_t file, void *buf, size_t sz)
 }
 
 int fd_send(fd_t sock, const void *buf, size_t sz, int flags)
-{ return fd_write(sock, buf, sz); }
+{ 
+	(void) flags;
+	return fd_write(sock, buf, sz); 
+}
 
 int fd_recv(fd_t sock, void *buf, size_t sz, int flags)
-{ return fd_read(sock, buf, sz); }
+{ 
+	(void) flags;
+	return fd_read(sock, buf, sz); 
+}
 
 int fd_truncate(fd_t file, size_t sz)
 {
@@ -657,7 +674,7 @@ int fd_slurp(fd_t fd, struct buf *b)
 	if(rc < 0) {
 		goto err_out;
 	}
-	if(rc != st.st_size) {
+	if(rc != (int) st.st_size) {
 		goto err_out;
 	}
 

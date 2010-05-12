@@ -1,5 +1,8 @@
 @echo off
 
+echo CONFIG_TUP_NO_COLORS=y > tup.config
+echo CONFIG_TUP_MSVC=y >> tup.config
+
 rmdir /S /Q build
 mkdir build
 mkdir build\ldpreload

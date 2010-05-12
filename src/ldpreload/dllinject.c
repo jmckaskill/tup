@@ -7,8 +7,31 @@
 #include <psapi.h>
 #include <stdio.h>
 #include <string.h>
-#include <winternl.h>
 #include <malloc.h>
+#include <stdint.h>
+#include <ctype.h>
+
+#ifndef __in
+#define __in
+#define __out
+#define __inout
+#define __in_opt
+#define __inout_opt
+#define __reserved
+#endif
+
+#ifdef _MSC_VER
+#define stricmp _stricmp
+#define strnicmp _strnicmp
+#define wcsicmp _wcsicmp
+#define wcsnicmp _wcsnicmp
+#elif defined __GNUC__
+_CRTIMP int __cdecl __MINGW_NOTHROW	stricmp (const char*, const char*);
+_CRTIMP int __cdecl __MINGW_NOTHROW	strnicmp (const char*, const char*, size_t);
+_CRTIMP int __cdecl __MINGW_NOTHROW	wcsicmp (const wchar_t*, const wchar_t*);
+_CRTIMP int __cdecl __MINGW_NOTHROW	wcsnicmp (const wchar_t*, const wchar_t*, size_t);
+#endif
+
 
 void debug_hook(const char* format, ...)
 {
@@ -25,31 +48,6 @@ void debug_hook(const char* format, ...)
 #else
 #	define DEBUG_HOOK __noop
 #endif
-
-typedef NTSTATUS (*NtCreateFile_t)(
-    OUT PHANDLE FileHandle,
-    IN ACCESS_MASK DesiredAccess,
-    IN POBJECT_ATTRIBUTES ObjectAttributes,
-    OUT PIO_STATUS_BLOCK IoStatusBlock,
-    IN PLARGE_INTEGER AllocationSize OPTIONAL,
-    IN ULONG FileAttributes,
-    IN ULONG ShareAccess,
-    IN ULONG CreateDisposition,
-    IN ULONG CreateOptions,
-    IN PVOID EaBuffer OPTIONAL,
-    IN ULONG EaLength);
-
-typedef NTSTATUS (*NtOpenFile_t) (
-    OUT PHANDLE FileHandle,
-    IN ACCESS_MASK DesiredAccess,
-    IN POBJECT_ATTRIBUTES ObjectAttributes,
-    OUT PIO_STATUS_BLOCK IoStatusBlock,
-    IN ULONG ShareAccess,
-    IN ULONG OpenOptions);
-
-typedef FARPROC (WINAPI *GetProcAddress_t)(
-    __in HMODULE hModule,
-    __in LPCSTR lpProcName);
 
 typedef HFILE (WINAPI *OpenFile_t)(
     __in    LPCSTR lpFileName,
@@ -329,9 +327,6 @@ typedef BOOL (WINAPI *CreateProcessWithTokenW_t)(
 
 
 
-static NtCreateFile_t			NtCreateFile_orig;
-static NtOpenFile_t			NtOpenFile_orig;
-static GetProcAddress_t			GetProcAddress_orig;
 static OpenFile_t			OpenFile_orig;
 static CreateFileA_t			CreateFileA_orig;
 static CreateFileW_t			CreateFileW_orig;
@@ -380,74 +375,6 @@ static unsigned short s_udp_port;
 
 /* -------------------------------------------------------------------------- */
 
-#pragma runtime_checks("", off)
-NTSTATUS WINAPI NtCreateFile_hook(
-    OUT PHANDLE FileHandle,
-    IN ACCESS_MASK DesiredAccess,
-    IN POBJECT_ATTRIBUTES ObjectAttributes,
-    OUT PIO_STATUS_BLOCK IoStatusBlock,
-    IN PLARGE_INTEGER AllocationSize OPTIONAL,
-    IN ULONG FileAttributes,
-    IN ULONG ShareAccess,
-    IN ULONG CreateDisposition,
-    IN ULONG CreateOptions,
-    IN PVOID EaBuffer OPTIONAL,
-    IN ULONG EaLength)
-{
-	DEBUG_HOOK("NtCreateFile '%S'\n", ObjectAttributes->ObjectName->Buffer);
-	return NtCreateFile_orig(
-		FileHandle,
-		DesiredAccess,
-		ObjectAttributes,
-		IoStatusBlock,
-		AllocationSize,
-		FileAttributes,
-		ShareAccess,
-		CreateDisposition,
-		CreateOptions,
-		EaBuffer,
-		EaLength);
-}
-
-NTSTATUS WINAPI NtOpenFile_hook(
-    OUT PHANDLE FileHandle,
-    IN ACCESS_MASK DesiredAccess,
-    IN POBJECT_ATTRIBUTES ObjectAttributes,
-    OUT PIO_STATUS_BLOCK IoStatusBlock,
-    IN ULONG ShareAccess,
-    IN ULONG OpenOptions)
-{
-	DEBUG_HOOK("NtOpenFile '%S'\n", ObjectAttributes->ObjectName->Buffer);
-	return NtOpenFile_orig(
-		FileHandle,
-		DesiredAccess,
-		ObjectAttributes,
-		IoStatusBlock,
-		ShareAccess,
-		OpenOptions);
-}
-#pragma runtime_checks("", restore)
-
-/* -------------------------------------------------------------------------- */
-
-static void Output(const char* text)
-{
-	DWORD written;
-	WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), text, strlen(text), &written, NULL);
-}
-
-FARPROC GetProcAddress_hook(
-    __in HMODULE hModule,
-    __in LPCSTR lpProcName)
-{
-	/*Output("GetProcAddress ");*/
-	/*Output(lpProcName);*/
-	/*Output("\r\n");*/
-	return GetProcAddress_orig(hModule, lpProcName);
-}
-	
-/* -------------------------------------------------------------------------- */
-
 static HFILE WINAPI OpenFile_hook(
     __in    LPCSTR lpFileName,
     __inout LPOFSTRUCT lpReOpenBuff,
@@ -489,13 +416,16 @@ static HANDLE WINAPI CreateFileA_hook(
 		dwFlagsAndAttributes,
 		hTemplateFile);
 
+	DEBUG_HOOK("CreateFileA '%s', %p:%x, %x, %x, %x, %x\n",
+		lpFileName,
+		h,
+		GetLastError(),
+		dwDesiredAccess,
+		dwShareMode,
+		dwCreationDisposition,
+		dwFlagsAndAttributes);
+
 	if (h == INVALID_HANDLE_VALUE) {
-		DEBUG_HOOK("CreateFileA error %x, %x, %x, %x, %x\n",
-			GetLastError(),
-			dwDesiredAccess,
-			dwShareMode,
-			dwCreationDisposition,
-			dwFlagsAndAttributes);
 		handle_file(lpFileName, NULL, ACCESS_GHOST);
 	} else if (dwDesiredAccess & GENERIC_WRITE) {
 		handle_file(lpFileName, NULL, ACCESS_WRITE);
@@ -1230,7 +1160,7 @@ struct remote_thread_t
 
 
 typedef void (*foreach_import_t)(HMODULE, IMAGE_THUNK_DATA* orig, IMAGE_THUNK_DATA* cur);
-static void foreach_module(HMODULE h, foreach_import_t kernel32, foreach_import_t advapi32, foreach_import_t ntdll)
+static void foreach_module(HMODULE h, foreach_import_t kernel32, foreach_import_t advapi32)
 {
 	IMAGE_DOS_HEADER* dos_header;
 	IMAGE_NT_HEADERS* nt_headers;
@@ -1252,21 +1182,15 @@ static void foreach_module(HMODULE h, foreach_import_t kernel32, foreach_import_
 		if (imports->FirstThunk && imports->OriginalFirstThunk) {
 			IMAGE_THUNK_DATA* cur = (IMAGE_THUNK_DATA*) (imports->FirstThunk + (char*) h);
 			IMAGE_THUNK_DATA* orig = (IMAGE_THUNK_DATA*) (imports->OriginalFirstThunk + (char*) h);
-			if (_strcmpi(dllname, "kernel32.dll") == 0) {
+			if (stricmp(dllname, "kernel32.dll") == 0) {
 				while (cur->u1.Function && orig->u1.Function) {
 					kernel32(h, orig, cur);
 					cur++;
 					orig++;
 				}
-			} else if (_strcmpi(dllname, "advapi32.dll") == 0) {
+			} else if (stricmp(dllname, "advapi32.dll") == 0) {
 				while (cur->u1.Function && orig->u1.Function) {
 					advapi32(h, orig, cur);
-					cur++;
-					orig++;
-				}
-			} else if (_strcmpi(dllname, "ntdll.dll") == 0) {
-				while (cur->u1.Function && orig->u1.Function) {
-					ntdll(h, orig, cur);
 					cur++;
 					orig++;
 				}
@@ -1309,12 +1233,6 @@ static void hook(HMODULE h, IMAGE_THUNK_DATA* orig, IMAGE_THUNK_DATA* cur, void*
 #define HOOK_ORD(name, ordinal) hook(h, orig, cur, (void*) name##_hook, (void**) &name##_orig, #name, ordinal)
 #define HOOK(name) hook(h, orig, cur, (void*) name##_hook, (void**) &name##_orig, #name, IMAGE_ORDINAL_FLAG)
 
-static void have_ntdll_import(HMODULE h, IMAGE_THUNK_DATA* orig, IMAGE_THUNK_DATA* cur)
-{
-	//HOOK(NtCreateFile);
-	//HOOK(NtOpenFile);
-}
-
 static void have_kernel32_import(HMODULE h, IMAGE_THUNK_DATA* orig, IMAGE_THUNK_DATA* cur)
 {
 	HOOK(OpenFile);
@@ -1352,7 +1270,6 @@ static void have_kernel32_import(HMODULE h, IMAGE_THUNK_DATA* orig, IMAGE_THUNK_
 	HOOK(FindNextFileW);
 	HOOK(CreateProcessA);
 	HOOK(CreateProcessW);
-	/*HOOK(GetProcAddress);*/
 }
 
 static void have_advapi32_import(HMODULE h, IMAGE_THUNK_DATA* orig, IMAGE_THUNK_DATA* cur)
@@ -1392,7 +1309,7 @@ const char *strcasestr(const char *arg1, const char *arg2)
 {                  
 	const char *a, *b;
 
-	for(;*arg1;*arg1++) {
+	for(;*arg1;arg1++) {
 
 		a = arg1;
 		b = arg2;
@@ -1412,7 +1329,7 @@ const wchar_t *wcscasestr(const wchar_t *arg1, const wchar_t *arg2)
 {                  
 	const wchar_t *a, *b;
 
-	for(;*arg1;*arg1++) {
+	for(;*arg1;arg1++) {
 
 		a = arg1;
 		b = arg2;
@@ -1427,13 +1344,6 @@ const wchar_t *wcscasestr(const wchar_t *arg1, const wchar_t *arg2)
 
 	return(NULL);
 }
-
-#ifdef _MSC_VER
-#define stricmp _stricmp
-#define strnicmp _strnicmp
-#define wcsicmp _wcsicmp
-#define wcsnicmp _wcsnicmp
-#endif
 
 static int ignore_file(const char* file)
 {
@@ -1498,7 +1408,6 @@ static void handle_file(const char* file, const char* file2, enum access_type at
 	char buf[ACCESS_EVENT_MAX_SIZE];
 	size_t fsz = file ? strlen(file) : 0;
 	size_t f2sz = file2 ? strlen(file2) : 0;
-	size_t used = sizeof(struct access_event) + ((fsz + f2sz + 2) * sizeof(wchar_t));
 	struct access_event* e = (struct access_event*) buf;
 	char* dest = (char*) (e + 1);
 	int ret;
@@ -1528,7 +1437,6 @@ static void handle_file_w(const wchar_t* file, const wchar_t* file2, enum access
 	char buf[ACCESS_EVENT_MAX_SIZE];
 	size_t fsz = file ? wcslen(file) : 0;
 	size_t f2sz = file2 ? wcslen(file2) : 0;
-	size_t used = sizeof(struct access_event) + ((fsz + f2sz + 2) * sizeof(wchar_t));
 	struct access_event* e = (struct access_event*) buf;
 	char* dest = (char*) (e + 1);
 	int ret;
@@ -1580,7 +1488,12 @@ err:
 /* -------------------------------------------------------------------------- */
 
 BOOL WINAPI DllMain(HANDLE HDllHandle, DWORD Reason, LPVOID Reserved)
-{ return 1; }
+{ 
+	(void) HDllHandle;
+	(void) Reason;
+	(void) Reserved;
+	return 1; 
+}
 
 /* -------------------------------------------------------------------------- */
 
@@ -1624,7 +1537,7 @@ DWORD tup_inject_init(remote_thread_t* r)
 			return 1;
 		}
 
-		foreach_module(modules[i], &have_kernel32_import, &have_advapi32_import, &have_ntdll_import);
+		foreach_module(modules[i], &have_kernel32_import, &have_advapi32_import);
 	}
 
 	tup_inject_setexecdir(r->execdir);
@@ -1640,8 +1553,11 @@ DWORD tup_inject_init(remote_thread_t* r)
 	return 0;
 }
 
-#pragma optimize("", off)
-#pragma runtime_checks("", off)
+#ifdef _MSC_VER
+#	pragma optimize("", off)
+#	pragma runtime_checks("", off)
+#endif
+
 static DWORD WINAPI remote_thread(void* param)
 {
 	HMODULE h;
@@ -1664,8 +1580,11 @@ static DWORD WINAPI remote_thread(void* param)
 static void remote_thread_end(void)
 {
 }
-#pragma optimize("", on)
-#pragma runtime_checks("", restore)
+
+#ifdef _MSC_VER
+#	pragma optimize("", on)
+#	pragma runtime_checks("", restore)
+#endif
 
 
 int tup_inject_dll(

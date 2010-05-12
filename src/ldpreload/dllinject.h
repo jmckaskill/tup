@@ -1,3 +1,6 @@
+#ifndef tup_dllinject_h
+#define tup_dllinject_h
+
 #include <windows.h>
 
 #ifdef BUILDING_DLLINJECT
@@ -24,4 +27,6 @@ DLLINJECT_API int tup_inject_dll(
 
 #ifdef __cplusplus
 }
+#endif
+
 #endif

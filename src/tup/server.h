@@ -26,7 +26,7 @@ struct server {
 	fd_t lockfd;
 	pthread_t tid;
 	struct file_info finfo;
-	uint16_t udp_port;
+	int udp_port;
 };
 
 int server_init(void);

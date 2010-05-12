@@ -4,6 +4,7 @@
 
 #include <stdlib.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <time.h>
 #include <windows.h>
 #include <malloc.h>
@@ -28,9 +29,14 @@ int     setenv(const char* name, const char* value, int overwrite);
 
 void filetime_to_timeval(FILETIME* ft, struct timeval* tv);
 
+#define snprintf _snprintf
+
 #ifdef _MSC_VER
 #define strdup _strdup
 #define alloca _alloca
+#elif defined(__GNUC__)
+_CRTIMP char* __cdecl __MINGW_NOTHROW	strdup (const char*) __MINGW_ATTRIB_MALLOC;
+#define alloca(x) __builtin_alloca((x))
 #endif
 
 #endif
