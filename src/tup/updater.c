@@ -995,32 +995,32 @@ static int run(struct node* n, struct server* s, const char* name, fd_t dfd)
 		&pi);
 
 	if (!ret) {
-		fprintf(stderr, "CreateProcess failed %d\n", GetLastError());
+		fprintf(stderr, "*** Command %"PRI_TUPID" failed to create child process '%s': %s\n", n->tnode.tupid, strerror(errno), name);
 		goto end;
 	}
 
 	if (tup_inject_dll(&pi, s->udp_port)) {
-		fprintf(stderr, "Failed to inject dll %d\n", GetLastError());
+		fprintf(stderr, "*** Command %"PRI_TUPID" failed to inject dll '%s': %s\n", n->tnode.tupid, strerror(errno), name);
 		goto end;
 	}
 
 	if (ResumeThread(pi.hThread) == (DWORD)~0) {
-		fprintf(stderr, "ResumeThread failed %d\n", GetLastError());
+		fprintf(stderr, "*** Command %"PRI_TUPID" failed to start thread '%s': %s\n", n->tnode.tupid, strerror(errno), name);
 		goto end;
 	}
 
 	if (WaitForSingleObject(pi.hThread, INFINITE) != WAIT_OBJECT_0) {
-		fprintf(stderr, "WFSO thread failed %d\n", GetLastError());
+		fprintf(stderr, "*** Command %"PRI_TUPID" failed to wait for thread '%s': %s\n", n->tnode.tupid, strerror(errno), name);
 		goto end;
 	}
 
 	if (WaitForSingleObject(pi.hProcess, INFINITE) != WAIT_OBJECT_0) {
-		fprintf(stderr, "WFSO process failed %d\n", GetLastError());
+		fprintf(stderr, "*** Command %"PRI_TUPID" failed to wait for process '%s': %s\n", n->tnode.tupid, strerror(errno), name);
 		goto end;
 	}
 
 	if (!GetExitCodeProcess(pi.hProcess, &return_code)) {
-		fprintf(stderr, "Failed to get exit code %d\n", GetLastError());
+		fprintf(stderr, "*** Command %"PRI_TUPID" failed to get exit code '%s': %s\n", n->tnode.tupid, strerror(errno), name);
 		goto end;
 	}
 
